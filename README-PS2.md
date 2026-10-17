@@ -1,5 +1,10 @@
 # Fallout Community Edition — PlayStation 2 port
 
+> **Unofficial fan project, made with AI.** This PlayStation 2 port was written
+> with the help of an AI assistant (Claude, by Anthropic). It is not affiliated
+> with or endorsed by Bethesda, Interplay, or the fallout1-ce developers. No game
+> data is included: you need your own legally owned copy of Fallout.
+
 An experimental PS2 port of [alexbatalov/fallout1-ce](https://github.com/alexbatalov/fallout1-ce).
 Tested in PCSX2; not yet confirmed on real hardware. You need your own copy of
 Fallout (e.g. GOG) — no game data is included.

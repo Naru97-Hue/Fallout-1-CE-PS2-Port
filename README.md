@@ -1,3 +1,16 @@
+# Fallout 1 CE — PlayStation 2 port (fan project)
+
+> **Unofficial fan project, made with AI.** This fork adds an experimental
+> PlayStation 2 port to [fallout1-ce](https://github.com/alexbatalov/fallout1-ce),
+> written with the help of an AI assistant (Claude, by Anthropic). It is not
+> affiliated with or endorsed by Bethesda, Interplay, or the fallout1-ce
+> developers. No game data is included.
+>
+> **PS2 build, install and controls: see [README-PS2.md](README-PS2.md).**
+> The original fallout1-ce readme follows below.
+
+---
+
 # Fallout Community Edition
 
 Fallout Community Edition is a fully working re-implementation of Fallout, with the same original gameplay, engine bugfixes, and some quality of life improvements, that works (mostly) hassle-free on multiple platforms.
