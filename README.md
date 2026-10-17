@@ -1,5 +1,8 @@
 # Fallout 1 CE — PlayStation 2 port (fan project)
 
+> ⚠️ **Experimental.** Tested in the PCSX2 emulator only, not yet on a real
+> PS2. Expect bugs, slowdowns and missing features.
+>
 > **Unofficial fan project, made with AI.** This fork adds an experimental
 > PlayStation 2 port to [fallout1-ce](https://github.com/alexbatalov/fallout1-ce),
 > written with the help of an AI assistant (Claude, by Anthropic). It is not

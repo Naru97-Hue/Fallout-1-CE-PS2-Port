@@ -1,5 +1,8 @@
 # Fallout Community Edition — PlayStation 2 port
 
+> ⚠️ **Experimental.** Tested in the PCSX2 emulator only, not yet on a real
+> PS2. Expect bugs, slowdowns and missing features; keep backups of your saves.
+>
 > **Unofficial fan project, made with AI.** This PlayStation 2 port was written
 > with the help of an AI assistant (Claude, by Anthropic). It is not affiliated
 > with or endorsed by Bethesda, Interplay, or the fallout1-ce developers. No game
@@ -21,6 +24,34 @@ cmake -S . -B build-ps2 -DCMAKE_TOOLCHAIN_FILE=$PS2DEV/share/ps2dev.cmake -DCMAK
 cmake --build build-ps2 -j8
 mips64r5900el-ps2-elf-strip -o FALLOUT.ELF build-ps2/fallout-ce
 ```
+
+## Movies and audio
+
+**Game audio** (music, sound effects, speech) works out of the box: the port
+plays the original files from `MASTER.DAT` / `DATA` through the PS2's sound
+processor. Nothing needs converting.
+
+**Cutscenes** need converting once, because the PS2 can't decode the PC's
+`.MVE` format. The port plays them with the PS2's video decoder (IPU) from a
+`MOVIES` folder next to `FALLOUT.ELF`:
+
+- `MOVIES/<NAME>.M2V` – MPEG-2 video
+- `MOVIES/<NAME>.PCM` – sound: raw signed 16-bit little-endian stereo, 22050 Hz
+
+The included tool does this for you. You need [Python 3](https://www.python.org/)
+and [ffmpeg](https://ffmpeg.org/) on your PATH:
+
+```sh
+python tools/convert_movies.py "C:\GOG Games\Fallout" "E:\Fallout\PS2"
+```
+
+It takes the movies from `MASTER.DAT` (or loose `DATA\ART\CUTS\*.MVE` files),
+converts them, and writes the `MOVIES` folder into the second folder you give
+(the folder with `FALLOUT.ELF`). Movies without a converted file are skipped,
+so the game still runs if you leave this out.
+
+`tools/f1dat.py` is the small extractor it uses; it can also pull any other
+file out of a Fallout 1 `.DAT` archive.
 
 ## Install, controls and options
 
