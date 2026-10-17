@@ -720,8 +720,14 @@ int automap_pip_save()
         char automapDbPath[512];
         snprintf(automapDbPath, sizeof(automapDbPath), "%s\\%s\\%s", masterPatchesPath, "MAPS", AUTOMAP_DB);
         if (compat_remove(automapDbPath) != 0) {
+#ifdef __PS2__
+            // Removing can fail on PS2 file systems (PCSX2's host:); the
+            // rename below overwrites the file anyway.
+            debug_printf("\nAUTOMAP: couldn't remove database, overwriting it\n");
+#else
             debug_printf("\nAUTOMAP: Error removing database!\n");
             return -1;
+#endif
         }
 
         // NOTE: Not sure about the size.

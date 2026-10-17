@@ -48,6 +48,9 @@ void mouse_get_position(int* x, int* y);
 void mouse_set_position(int x, int y);
 int mouse_get_buttons();
 bool mouse_hidden();
+#ifdef __PS2__
+bool mouse_get_gs_cursor(unsigned char** shape, int* width, int* height, int* pitch, int* x, int* y, int* trans);
+#endif
 void mouse_get_hotspot(int* hotx, int* hoty);
 void mouse_set_hotspot(int hotx, int hoty);
 bool mouse_query_exist();

@@ -23,6 +23,9 @@
 #include "game/tile.h"
 #include "game/worldmap.h"
 #include "plib/color/color.h"
+#ifdef __PS2__
+#include "plib/gnw/ps2map.h"
+#endif
 #include "plib/gnw/debug.h"
 #include "plib/gnw/grbuf.h"
 #include "plib/gnw/input.h"
@@ -4499,6 +4502,14 @@ static void obj_render_outline(Object* object, Rect* rect)
             break;
         }
 
+#ifdef __PS2__
+        // With the GS drawing the map, what's under the outline here is a
+        // hole, so draw tinted outlines in their solid colour.
+        if (ps2map_active()) {
+            v53 = 0;
+        }
+#endif
+
         unsigned char v54 = color;
         unsigned char* dest14 = dest;
         unsigned char* src15 = src;
@@ -4671,6 +4682,15 @@ static void obj_render_object(Object* object, Rect* rect, int light)
         return;
     }
 
+#ifdef __PS2__
+    // The GS draws the map: this pass only ran to update positions.
+    if (gPs2MapMode == PS2MAP_MODE_COLLECT) {
+        art_ptr_unlock(cacheEntry);
+        return;
+    }
+    bool ps2Emit = gPs2MapMode == PS2MAP_MODE_EMIT;
+#endif
+
     unsigned char* src = art_frame_data(art, object->frame, object->rotation);
     unsigned char* src2 = src;
     int v50 = objectRect.ulx - object->sx;
@@ -4678,6 +4698,18 @@ static void obj_render_object(Object* object, Rect* rect, int light)
     src += frameWidth * v49 + v50;
     int objectWidth = objectRect.lrx - objectRect.ulx + 1;
     int objectHeight = objectRect.lry - objectRect.uly + 1;
+
+#ifdef __PS2__
+#define PS2_EMIT_PART(srcPtr, w, h, dx, dy, clut, lightValue) \
+    ps2map_emit_part(object->fid, object->frame, object->rotation, src2, frameWidth, frameHeight, srcPtr, w, h, dx, dy, clut, lightValue)
+#define PS2_EMIT_TRANS(kind, lightValue) \
+    ps2map_emit_trans(object->fid, object->frame, object->rotation, src2, frameWidth, frameHeight, src, objectWidth, objectHeight, objectRect.ulx, objectRect.uly, kind, lightValue)
+    if (type == 6 && ps2Emit) {
+        PS2_EMIT_PART(src, objectWidth, objectHeight, objectRect.ulx, objectRect.uly, PS2MAP_CLUT_BASE, 0);
+        art_ptr_unlock(cacheEntry);
+        return;
+    }
+#endif
 
     if (type == 6) {
         trans_buf_to_buf(src,
@@ -4783,11 +4815,33 @@ static void obj_render_object(Object* object, Rect* rect, int light)
                         Rect* v21 = &(rects[i]);
                         if (v21->ulx <= v21->lrx && v21->uly <= v21->lry) {
                             unsigned char* sp = src + frameWidth * (v21->uly - objectRect.uly) + (v21->ulx - objectRect.ulx);
+#ifdef __PS2__
+                            if (ps2Emit) {
+                                PS2_EMIT_PART(sp, v21->lrx - v21->ulx + 1, v21->lry - v21->uly + 1, v21->ulx, v21->uly, PS2MAP_CLUT_LIGHT, light);
+                                continue;
+                            }
+#endif
                             dark_trans_buf_to_buf(sp, v21->lrx - v21->ulx + 1, v21->lry - v21->uly + 1, frameWidth, back_buf, v21->ulx, v21->uly, buf_full, light);
                         }
                     }
 
                     unsigned char* mask = art_frame_data(egg, 0, 0);
+#ifdef __PS2__
+                    if (ps2Emit) {
+                        ps2map_emit_egg(src + frameWidth * (updatedEggRect.uly - objectRect.uly) + (updatedEggRect.ulx - objectRect.ulx),
+                            frameWidth,
+                            updatedEggRect.lrx - updatedEggRect.ulx + 1,
+                            updatedEggRect.lry - updatedEggRect.uly + 1,
+                            updatedEggRect.ulx,
+                            updatedEggRect.uly,
+                            mask + eggWidth * (updatedEggRect.uly - eggRect.uly) + (updatedEggRect.ulx - eggRect.ulx),
+                            eggWidth,
+                            light);
+                        art_ptr_unlock(eggHandle);
+                        art_ptr_unlock(cacheEntry);
+                        return;
+                    }
+#endif
                     intensity_mask_buf_to_buf(
                         src + frameWidth * (updatedEggRect.uly - objectRect.uly) + (updatedEggRect.ulx - objectRect.ulx),
                         updatedEggRect.lrx - updatedEggRect.ulx + 1,
@@ -4807,6 +4861,35 @@ static void obj_render_object(Object* object, Rect* rect, int light)
             }
         }
     }
+
+#ifdef __PS2__
+    if (ps2Emit) {
+        switch (object->flags & OBJECT_FLAG_0xFC000) {
+        case OBJECT_TRANS_RED:
+            PS2_EMIT_TRANS(PS2MAP_TRANS_RED, light);
+            break;
+        case OBJECT_TRANS_WALL:
+            PS2_EMIT_TRANS(PS2MAP_TRANS_WALL, 0x10000);
+            break;
+        case OBJECT_TRANS_GLASS:
+            PS2_EMIT_TRANS(PS2MAP_TRANS_GLASS, light);
+            break;
+        case OBJECT_TRANS_STEAM:
+            PS2_EMIT_TRANS(PS2MAP_TRANS_STEAM, light);
+            break;
+        case OBJECT_TRANS_ENERGY:
+            PS2_EMIT_TRANS(PS2MAP_TRANS_ENERGY, light);
+            break;
+        default:
+            PS2_EMIT_PART(src, objectWidth, objectHeight, objectRect.ulx, objectRect.uly, PS2MAP_CLUT_LIGHT, light);
+            break;
+        }
+        art_ptr_unlock(cacheEntry);
+        return;
+    }
+#undef PS2_EMIT_PART
+#undef PS2_EMIT_TRANS
+#endif
 
     switch (object->flags & OBJECT_FLAG_0xFC000) {
     case OBJECT_TRANS_RED:

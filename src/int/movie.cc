@@ -1,5 +1,9 @@
 #include "int/movie.h"
 
+#ifdef __PS2__
+#include "plib/gnw/ps2gs.h"
+#endif
+
 #include <string.h>
 
 #include <SDL.h>
@@ -315,7 +319,12 @@ static void movie_MVE_ShowFrame(SDL_Surface* surface, int srcWidth, int srcHeigh
 
     SDL_SetSurfacePalette(surface, gSdlSurface->format->palette);
     SDL_BlitSurface(surface, &srcRect, gSdlSurface, &destRect);
+#ifdef __PS2__
+    // The direct GS present path only re-uploads regions it is told about.
+    ps2gs_mark_dirty(destRect.x, destRect.y, destRect.w, destRect.h);
+#else
     SDL_BlitSurface(gSdlSurface, NULL, gSdlTextureSurface, NULL);
+#endif
     renderPresent();
 }
 

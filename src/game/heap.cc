@@ -329,7 +329,16 @@ err_no_handle:
 
 err:
 
+#ifdef __PS2__
+    // The art cache hits this all the time and recovers (evicting or using
+    // system memory); printing it to the host file is slow. Log a few.
+    static int warnings = 0;
+    if (++warnings <= 5) {
+        debug_printf("Heap Warning: Could not allocate block of %d bytes.%s\n", size, warnings == 5 ? " (further warnings hidden)" : "");
+    }
+#else
     debug_printf("Heap Warning: Could not allocate block of %d bytes.\n", size);
+#endif
     return false;
 }
 
@@ -1055,13 +1064,17 @@ static bool heap_find_free_block(Heap* heap, int size, void** blockPtr, int a4)
 system:
 
     if (1) {
+#ifndef __PS2__
         char stats[512];
         if (heap_stats(heap, stats, sizeof(stats))) {
             debug_printf("\n%s\n", stats);
         }
+#endif
 
         if (a4 == 0) {
+#ifndef __PS2__
             debug_printf("Allocating block from system memory...\n");
+#endif
             unsigned char* block = (unsigned char*)mem_malloc(size + HEAP_BLOCK_OVERHEAD_SIZE);
             if (block == NULL) {
                 debug_printf("fatal error: internal_malloc() failed in heap_find_free_block()!\n");

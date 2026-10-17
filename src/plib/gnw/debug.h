@@ -12,6 +12,10 @@ void debug_register_screen();
 void debug_register_env();
 void debug_register_func(DebugFunc* func);
 int debug_printf(const char* format, ...);
+#ifdef __PS2__
+void ps2_log_memory(const char* tag);
+void debug_flush();
+#endif
 int debug_puts(char* string);
 void debug_clear();
 

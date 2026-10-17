@@ -135,7 +135,14 @@ typedef struct Procedure {
     int field_14;
 } Procedure;
 
-typedef struct ProgramValue {
+// PS2: keep each value 8-byte aligned so copies use plain 64-bit loads
+// instead of the unaligned LDL/LDR pair (which misbehaved in testing and made
+// OPCODE_CALL jump to address 0).
+typedef struct
+#ifdef __PS2__
+    alignas(8)
+#endif
+    ProgramValue {
     opcode_t opcode;
     union {
         int integerValue;

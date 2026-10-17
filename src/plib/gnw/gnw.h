@@ -60,6 +60,12 @@ void win_refresh_all(Rect* rect);
 void win_drag(int win);
 void win_get_mouse_buf(unsigned char* a1);
 Window* GNW_find(int win);
+#ifdef __PS2__
+// Screen rects where window `win` is visible (not covered by any window above
+// it). Returns how many were written to rects (at most maxRects).
+int win_visible_rects(int win, Rect* rects, int maxRects);
+int win_top_visible(int x, int y);
+#endif
 unsigned char* win_get_buf(int win);
 int win_get_top_win(int x, int y);
 int win_width(int win);

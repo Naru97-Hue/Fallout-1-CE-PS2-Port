@@ -97,7 +97,12 @@ int gnw_main(int argc, char** argv)
     }
 
     gmovie_play(MOVIE_IPLOGO, GAME_MOVIE_FADE_IN);
+    debug_printf("main: iplogo done\n");
     gmovie_play(MOVIE_INTRO, 0);
+    debug_printf("main: intro done\n");
+#ifdef __PS2__
+    ps2_log_memory("before main menu");
+#endif
 
     if (main_menu_create() == 0) {
         int language_filter = 1;

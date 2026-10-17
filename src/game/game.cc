@@ -149,6 +149,9 @@ int game_init(const char* windowTitle, bool isMapper, int font, int flags, int a
     video_options.fullscreen = true;
     video_options.scale = 1;
 
+#ifndef __PS2__
+    // PS2: always run at the native 640x480; the GS/TV output can't use the
+    // hi-res settings a PC f1_res.ini usually contains.
     Config resolutionConfig;
     if (config_init(&resolutionConfig)) {
         if (config_load(&resolutionConfig, "f1_res.ini", false)) {
@@ -176,6 +179,7 @@ int game_init(const char* windowTitle, bool isMapper, int font, int flags, int a
         }
         config_exit(&resolutionConfig);
     }
+#endif
 
     initWindow(&video_options, flags);
     palette_init();

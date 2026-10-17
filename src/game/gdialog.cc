@@ -3538,6 +3538,9 @@ static void talk_to_display_frame(Art* headFrm, int frame)
             tile_refresh_display();
         }
 
+#ifdef __PS2__
+        tile_bake_map();
+#endif
         unsigned char* src = win_get_buf(display_win);
         buf_to_buf(
             src + ((win_height(display_win) - 232) / 2) * win_width(display_win) + (win_width(display_win) - 388) / 2,

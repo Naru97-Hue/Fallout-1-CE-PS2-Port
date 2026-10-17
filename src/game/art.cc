@@ -90,6 +90,15 @@ int art_init()
         cacheSize = 8;
     }
 
+#ifdef __PS2__
+    // 32 MB total RAM: keep the art cache small so audio/SDL allocations
+    // don't fail later (an 8 MB cache ran the heap dry at the main menu).
+    if (cacheSize > 3) {
+        cacheSize = 3;
+    }
+    debug_printf("art cache: %d MB\n", cacheSize);
+#endif
+
     if (!cache_init(&art_cache, art_data_size, art_data_load, art_data_free, cacheSize << 20)) {
         debug_printf("cache_init failed in art_init\n");
         return -1;

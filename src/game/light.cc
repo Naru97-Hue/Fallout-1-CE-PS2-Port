@@ -4,6 +4,13 @@
 #include "game/object.h"
 #include "game/perk.h"
 #include "game/tile.h"
+#ifdef __PS2__
+#include "plib/gnw/ps2map.h"
+// Lighting changed: the GS map draw list must be rebuilt.
+#define PS2_LIGHT_CHANGED() ps2map_note_change()
+#else
+#define PS2_LIGHT_CHANGED()
+#endif
 
 namespace fallout {
 
@@ -56,6 +63,7 @@ void light_set_ambient(int new_ambient_light, bool refresh_screen)
 
     old_ambient_light = ambient_light;
     ambient_light = normalized;
+    PS2_LIGHT_CHANGED();
 
     if (refresh_screen) {
         if (old_ambient_light != normalized) {
@@ -123,6 +131,7 @@ void light_set_tile(int elevation, int tile, int lightIntensity)
     }
 
     tile_intensity[elevation][tile] = lightIntensity;
+    PS2_LIGHT_CHANGED();
 }
 
 // 0x46CB78
@@ -137,6 +146,7 @@ void light_add_to_tile(int elevation, int tile, int lightIntensity)
     }
 
     tile_intensity[elevation][tile] += lightIntensity;
+    PS2_LIGHT_CHANGED();
 }
 
 // 0x46CBB0
@@ -151,6 +161,7 @@ void light_subtract_from_tile(int elevation, int tile, int lightIntensity)
     }
 
     tile_intensity[elevation][tile] -= lightIntensity;
+    PS2_LIGHT_CHANGED();
 }
 
 // 0x46CBEC
@@ -164,6 +175,7 @@ void light_reset_tiles()
             tile_intensity[elevation][tile] = 655;
         }
     }
+    PS2_LIGHT_CHANGED();
 }
 
 } // namespace fallout

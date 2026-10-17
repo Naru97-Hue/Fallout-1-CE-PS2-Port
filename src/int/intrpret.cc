@@ -24,6 +24,36 @@ namespace fallout {
 // Size of internal stack in bytes (per program).
 #define STACK_SIZE 0x800
 
+// Set to 1 to enable the PS2 script-engine trace/watchpoint diagnostics
+// (very slow: compares the procedure table after every opcode).
+#ifndef PS2_SCRIPT_DEBUG
+#define PS2_SCRIPT_DEBUG 0
+#endif
+
+#if PS2_SCRIPT_DEBUG
+// Ring buffer of recently executed instructions, dumped on a stack overflow
+// so the failing script path can be matched against a disassembly.
+#define PS2_TRACE_SIZE 64
+struct Ps2TraceEntry {
+    void* program;
+    int ip;
+    unsigned short opcode;
+    int depth;
+};
+static Ps2TraceEntry ps2Trace[PS2_TRACE_SIZE];
+static int ps2TraceHead = 0;
+static void ps2_trace_record(Program* program, int ip, unsigned short opcode);
+static void ps2_trace_dump(Program* program);
+
+// Watchpoint on the most recently loaded script's procedure table.
+static unsigned char* ps2WatchAddr = NULL;
+static unsigned char ps2WatchCopy[1024];
+static int ps2WatchSize = 0;
+static char ps2WatchName[64];
+static bool ps2WatchReported = false;
+static void ps2_watch_check(const char* where, int ip, unsigned short opcode);
+#endif
+
 typedef struct ProgramListNode {
     Program* program;
     struct ProgramListNode* next; // next
@@ -412,6 +442,13 @@ void interpretFreeProgram(Program* program)
     }
 
     if (program->data != NULL) {
+#if PS2_SCRIPT_DEBUG
+        debug_printf("script free: %s data=%p\n", program->name, program->data);
+        if (program->procedures == ps2WatchAddr) {
+            ps2_watch_check("just before the script was freed", program->instructionPointer, 0);
+            ps2WatchAddr = NULL;
+        }
+#endif
         myfree(program->data, __FILE__, __LINE__); // "..\int\INTRPRET.C", 372
     }
 
@@ -439,7 +476,19 @@ Program* allocateProgram(const char* path)
     int fileSize = db_filelength(stream);
     unsigned char* data = (unsigned char*)mymalloc(fileSize, __FILE__, __LINE__); // ..\int\INTRPRET.C, 398
 
+#if PS2_SCRIPT_DEBUG
+    size_t bytesRead = db_fread(data, 1, fileSize, stream);
+    {
+        // FNV-1a checksum so the loaded bytes can be compared to the file on disk.
+        unsigned int hash = 2166136261u;
+        for (int i = 0; i < fileSize; i++) {
+            hash = (hash ^ data[i]) * 16777619u;
+        }
+        debug_printf("script load: %s size=%d read=%u fnv=%08x\n", path, fileSize, (unsigned)bytesRead, hash);
+    }
+#else
     db_fread(data, 1, fileSize, stream);
+#endif
     db_fclose(stream);
 
     Program* program = (Program*)mymalloc(sizeof(Program), __FILE__, __LINE__); // ..\int\INTRPRET.C, 402
@@ -456,6 +505,23 @@ Program* allocateProgram(const char* path)
     program->framePointer = -1;
     program->data = data;
     program->procedures = data + 42;
+#if PS2_SCRIPT_DEBUG
+    {
+        int count = fetchLong(program->procedures, 0);
+        int size = 4 + count * (int)sizeof(Procedure);
+        if (size > (int)sizeof(ps2WatchCopy)) {
+            size = sizeof(ps2WatchCopy);
+        }
+        if (size > 0 && 42 + size <= fileSize) {
+            ps2WatchAddr = program->procedures;
+            ps2WatchSize = size;
+            memcpy(ps2WatchCopy, ps2WatchAddr, size);
+            snprintf(ps2WatchName, sizeof(ps2WatchName), "%s", path);
+            ps2WatchReported = false;
+            debug_printf("watch: armed on %s procedure table (%d bytes at %p)\n", path, size, ps2WatchAddr);
+        }
+    }
+#endif
     program->identifiers = sizeof(Procedure) * fetchLong(program->procedures, 0) + program->procedures + 4;
     program->staticStrings = program->identifiers + fetchLong(program->identifiers, 0) + 4;
 
@@ -695,10 +761,13 @@ static void op_cancel(Program* program)
         interpretError("Invalid procedure offset given to cancel");
     }
 
-    Procedure* proc = (Procedure*)(program->procedures + 4 + data * sizeof(*proc));
-    proc->field_4 = 0;
-    proc->field_8 = 0;
-    proc->field_C = 0;
+    // Procedure entries in the script file are only 2-byte aligned; write
+    // byte-by-byte (an int store through a cast pointer corrupts the table on
+    // MIPS/PS2).
+    unsigned char* proc = program->procedures + 4 + data * sizeof(Procedure);
+    storeLong(0, proc, 4);
+    storeLong(0, proc, 8);
+    storeLong(0, proc, 12);
 }
 
 // 0x45C3B4
@@ -708,11 +777,11 @@ static void op_cancelall(Program* program)
 
     for (int index = 0; index < procedureCount; index++) {
         // TODO: Original code uses different approach, check.
-        Procedure* proc = (Procedure*)(program->procedures + 4 + index * sizeof(*proc));
+        unsigned char* proc = program->procedures + 4 + index * sizeof(Procedure);
 
-        proc->field_4 = 0;
-        proc->field_8 = 0;
-        proc->field_C = 0;
+        storeLong(0, proc, 4);
+        storeLong(0, proc, 8);
+        storeLong(0, proc, 12);
     }
 }
 
@@ -1996,6 +2065,20 @@ static void op_call(Program* program)
         // }
     } else {
         program->instructionPointer = fetchLong(procedurePtr, 16);
+#if PS2_SCRIPT_DEBUG
+        if (program->instructionPointer == 0) {
+            static int ps2ZeroCallReports = 0;
+            if (ps2ZeroCallReports < 3) {
+                ps2ZeroCallReports++;
+                // Dump the procedure-table entry as it is in memory now.
+                debug_printf("op_call: procedure %d in %s resolved to address 0; entry bytes:", data, program->name);
+                for (int b = 0; b < 24; b++) {
+                    debug_printf(" %02x", procedurePtr[b]);
+                }
+                debug_printf("\n");
+            }
+        }
+#endif
         if ((procedureFlags & PROCEDURE_FLAG_CRITICAL) != 0) {
             // NOTE: Uninline.
             op_critical_start(program);
@@ -2560,6 +2643,10 @@ void interpret(Program* program, int a2)
 
     currentProgram = program;
 
+#if PS2_SCRIPT_DEBUG
+    ps2_watch_check("between script runs (game code)", program->instructionPointer, 0);
+#endif
+
     if (setjmp(program->env)) {
         currentProgram = oldCurrentProgram;
         program->flags |= PROGRAM_FLAG_EXITED | PROGRAM_FLAG_0x04;
@@ -2594,8 +2681,14 @@ void interpret(Program* program, int a2)
             program->flags &= ~PROGRAM_IS_WAITING;
         }
 
+#if PS2_SCRIPT_DEBUG
+        int ps2TraceIp = program->instructionPointer;
+#endif
         // NOTE: Uninline.
         opcode_t opcode = getOp(program);
+#if PS2_SCRIPT_DEBUG
+        ps2_trace_record(program, ps2TraceIp, opcode);
+#endif
 
         // TODO: Replace with field_82 and field_80?
         program->flags &= 0xFFFF;
@@ -2614,6 +2707,9 @@ void interpret(Program* program, int a2)
         }
 
         handler(program);
+#if PS2_SCRIPT_DEBUG
+        ps2_watch_check("after opcode", ps2TraceIp, opcode);
+#endif
     }
 
     if ((program->flags & PROGRAM_FLAG_EXITED) != 0) {
@@ -3109,6 +3205,9 @@ int interpretLoadProgramState()
 void programStackPushValue(Program* program, ProgramValue& programValue)
 {
     if (program->stackValues->size() > STACK_SIZE) {
+#if PS2_SCRIPT_DEBUG
+        ps2_trace_dump(program);
+#endif
         interpretError("programStackPushValue: Stack overflow.");
     }
 
@@ -3267,5 +3366,65 @@ bool ProgramValue::isEmpty()
     // Should be unreachable.
     return true;
 }
+
+#if PS2_SCRIPT_DEBUG
+static void ps2_watch_check(const char* where, int ip, unsigned short opcode)
+{
+    if (ps2WatchAddr == NULL || ps2WatchReported) {
+        return;
+    }
+
+    if (memcmp(ps2WatchAddr, ps2WatchCopy, ps2WatchSize) == 0) {
+        return;
+    }
+
+    ps2WatchReported = true;
+    int first = 0;
+    while (first < ps2WatchSize && ps2WatchAddr[first] == ps2WatchCopy[first]) {
+        first++;
+    }
+    int last = ps2WatchSize - 1;
+    while (last > first && ps2WatchAddr[last] == ps2WatchCopy[last]) {
+        last--;
+    }
+
+    debug_printf("watch: %s procedure table CHANGED %s (current %s ip=0x%x op=%04x); bytes %d..%d of table\n",
+        ps2WatchName, where, currentProgram != NULL ? currentProgram->name : "?", ip, opcode, first, last);
+    debug_printf("watch: was:");
+    for (int i = first; i <= last && i < first + 32; i++) {
+        debug_printf(" %02x", ps2WatchCopy[i]);
+    }
+    debug_printf("\nwatch: now:");
+    for (int i = first; i <= last && i < first + 32; i++) {
+        debug_printf(" %02x", ps2WatchAddr[i]);
+    }
+    debug_printf("\n");
+}
+#endif
+
+#if PS2_SCRIPT_DEBUG
+static void ps2_trace_record(Program* program, int ip, unsigned short opcode)
+{
+    Ps2TraceEntry* e = &(ps2Trace[ps2TraceHead]);
+    e->program = program;
+    e->ip = ip;
+    e->opcode = opcode;
+    e->depth = program->stackValues != NULL ? (int)program->stackValues->size() : -1;
+    ps2TraceHead = (ps2TraceHead + 1) % PS2_TRACE_SIZE;
+}
+
+static void ps2_trace_dump(Program* program)
+{
+    debug_printf("=== script trace (%s, ip=0x%x, data=%p) ===\n", program->name, program->instructionPointer, program->data);
+    for (int i = 0; i < PS2_TRACE_SIZE; i++) {
+        Ps2TraceEntry* e = &(ps2Trace[(ps2TraceHead + i) % PS2_TRACE_SIZE]);
+        if (e->program == NULL) {
+            continue;
+        }
+        debug_printf("  %s ip=0x%04x op=%04x depth=%d\n", e->program == program ? "*" : " ", e->ip, e->opcode, e->depth);
+    }
+    debug_printf("=== end trace ===\n");
+}
+#endif
 
 } // namespace fallout

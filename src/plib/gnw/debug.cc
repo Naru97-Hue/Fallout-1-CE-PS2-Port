@@ -81,6 +81,17 @@ void debug_register_screen()
 // 0x4B2E50
 void debug_register_env()
 {
+#ifdef __PS2__
+    // PS2: no environment variables, so always log to debug.log next to the
+    // ELF (and to the EE console, visible in PCSX2's log window).
+    if (fd != NULL) {
+        fclose(fd);
+    }
+    fd = compat_fopen("debug.log", "wt");
+    debug_func = debug_log;
+    return;
+#endif
+
     const char* type = getenv("DEBUGACTIVE");
     if (type == NULL) {
         return;
@@ -207,6 +218,9 @@ static int debug_mono(char* string)
 static int debug_log(char* string)
 {
     if (debug_func == debug_log) {
+#ifdef __PS2__
+        printf("%s", string);
+#endif
         if (fd == NULL) {
             return -1;
         }
@@ -215,6 +229,16 @@ static int debug_log(char* string)
             return -1;
         }
 
+#ifdef __PS2__
+        // Each flush is a round trip to host:/USB; batch them unless a quarter
+        // second has passed (debug_exit flushes the rest).
+        static Uint32 lastFlush = 0;
+        Uint32 now = SDL_GetTicks();
+        if (now - lastFlush < 250) {
+            return 0;
+        }
+        lastFlush = now;
+#endif
         if (fflush(fd) == EOF) {
             return -1;
         }
@@ -311,3 +335,36 @@ static void debug_exit(void)
 }
 
 } // namespace fallout
+
+#ifdef __PS2__
+#include <malloc.h>
+#include <stddef.h>
+
+extern "C" void* sbrk(ptrdiff_t increment);
+
+namespace fallout {
+
+// Writes buffered log lines to debug.log now (crash reports).
+void debug_flush()
+{
+    if (fd != NULL) {
+        fflush(fd);
+    }
+}
+
+// Logs how much of the PS2's 32 MB is still available to malloc.
+void ps2_log_memory(const char* tag)
+{
+    struct mallinfo info = mallinfo();
+    char* top = (char*)sbrk(0);
+    // EE user RAM ends at 32 MB; leave the default 128 KB for the stack.
+    long untouched = (long)(0x02000000 - 0x20000) - (long)(unsigned long)top;
+    if (untouched < 0) {
+        untouched = 0;
+    }
+    long freeBytes = untouched + (long)info.fordblks;
+    debug_printf("mem[%s]: heap used %ld KB, free %ld KB\n", tag, (long)info.uordblks / 1024, freeBytes / 1024);
+}
+
+} // namespace fallout
+#endif

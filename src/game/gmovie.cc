@@ -1,4 +1,7 @@
 #include "game/gmovie.h"
+#ifdef __PS2__
+#include "int/ps2movie.h"
+#endif
 
 #include <stdio.h>
 #include <string.h>
@@ -185,11 +188,30 @@ int gmovie_play(int game_movie, int game_movie_flags)
 
     moviefx_start(movieFilePath);
 
+#ifdef __PS2__
+    // Hardware (IPU) playback of the pre-converted MPEG version when present.
+    if (!ps2movie_play(movieFilePath)) {
+        movieRun(win, movieFilePath);
+    }
+#else
     movieRun(win, movieFilePath);
+#endif
+
+#ifdef __PS2__
+    debug_printf("gmovie: movieRun returned, waiting for end\n");
+#endif
 
     int v11 = 0;
     int buttons;
+#ifdef __PS2__
+    unsigned int ps2LoopCount = 0;
+#endif
     do {
+#ifdef __PS2__
+        if ((++ps2LoopCount % 300) == 0) {
+            debug_printf("gmovie: still playing (loop %u)\n", ps2LoopCount);
+        }
+#endif
         if (!moviePlaying() || game_user_wants_to_quit || get_input() != -1) {
             break;
         }
@@ -206,10 +228,30 @@ int gmovie_play(int game_movie, int game_movie_flags)
         v11 |= buttons;
     } while (((v11 & 1) == 0 && (v11 & 2) == 0) || (buttons & 1) != 0 || (buttons & 2) != 0);
 
+#ifdef __PS2__
+    debug_printf("gmovie: playback loop finished\n");
+#endif
+
     movieStop();
+
+#ifdef __PS2__
+    debug_printf("gmovie: movieStop done\n");
+#endif
     moviefx_stop();
+
+#ifdef __PS2__
+    debug_printf("gmovie: moviefx_stop done\n");
+#endif
     movieUpdate();
+
+#ifdef __PS2__
+    debug_printf("gmovie: movieUpdate done\n");
+#endif
     palette_set_to(black_palette);
+
+#ifdef __PS2__
+    debug_printf("gmovie: palette black\n");
+#endif
 
     gmovie_played_list[game_movie] = 1;
 
@@ -233,6 +275,10 @@ int gmovie_play(int game_movie, int game_movie_flags)
     }
 
     win_delete(win);
+
+#ifdef __PS2__
+    debug_printf("gmovie: window deleted\n");
+#endif
 
     // CE: Destroying a window redraws only content it was covering (centered
     // 640x480). This leads to everything outside this rect to remain black.

@@ -379,7 +379,16 @@ static bool cache_add(Cache* cache, int key, int* indexPtr)
 
         bool allocated = false;
         int cacheEntrySize = size;
-        for (int attempt = 0; attempt < 10; attempt++) {
+#ifdef __PS2__
+        // Big items (backgrounds, world map) can't fit a small cache without
+        // throwing everything else out: give them system memory directly.
+        if (size > cache->maxSize / 4) {
+            if (heap_allocate(&(cache->heap), &(cacheEntry->heapHandleIndex), size, 0)) {
+                allocated = true;
+            }
+        }
+#endif
+        for (int attempt = 0; attempt < 10 && !allocated; attempt++) {
             if (heap_allocate(&(cache->heap), &(cacheEntry->heapHandleIndex), size, 1)) {
                 allocated = true;
                 break;
@@ -395,6 +404,13 @@ static bool cache_add(Cache* cache, int key, int* indexPtr)
             }
         }
 
+#ifdef __PS2__
+        // Fragmented: use system memory before flushing the whole cache
+        // (which made every piece of art reload from disk).
+        if (!allocated && heap_allocate(&(cache->heap), &(cacheEntry->heapHandleIndex), size, 0)) {
+            allocated = true;
+        }
+#endif
         if (!allocated) {
             cache_flush(cache);
 

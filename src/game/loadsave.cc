@@ -824,6 +824,9 @@ static int QuickSnapShot()
         gmouse_3d_on();
     }
 
+#ifdef __PS2__
+    tile_bake_map();
+#endif
     int isoWindowWidth = win_width(display_win);
     int isoWindowHeight = win_height(display_win);
     unsigned char* windowBuf = win_get_buf(display_win)
@@ -1294,6 +1297,9 @@ static int LSGameStart(int windowType)
             gmouse_3d_on();
         }
 
+#ifdef __PS2__
+        tile_bake_map();
+#endif
         int isoWindowWidth = win_width(display_win);
         int isoWindowHeight = win_height(display_win);
         unsigned char* windowBuf = win_get_buf(display_win)

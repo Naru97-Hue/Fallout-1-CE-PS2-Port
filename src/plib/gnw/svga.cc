@@ -1,5 +1,13 @@
 #include "plib/gnw/svga.h"
 
+#ifdef __PS2__
+#include "plib/gnw/ps2osk.h"
+#include "plib/gnw/ps2zoom.h"
+#include "plib/gnw/ps2video.h"
+#include "plib/gnw/ps2gs.h"
+#include "plib/gnw/ps2crash.h"
+#endif
+
 #include "plib/gnw/gnw.h"
 #include "plib/gnw/grbuf.h"
 #include "plib/gnw/mouse.h"
@@ -25,6 +33,45 @@ SDL_Surface* gSdlTextureSurface = NULL;
 // TODO: Remove once migration to update-render cycle is completed.
 FpsLimiter sharedFpsLimiter;
 
+#ifdef __PS2__
+// Region of the texture surface changed since the last upload. Only this
+// part is sent to the GS each present (full-screen uploads are expensive).
+static SDL_Rect gPs2Dirty = { 0, 0, 0, 0 };
+
+static void ps2MarkDirty(int x, int y, int w, int h)
+{
+    if (w <= 0 || h <= 0) {
+        return;
+    }
+    if (gPs2Dirty.w <= 0 || gPs2Dirty.h <= 0) {
+        gPs2Dirty.x = x;
+        gPs2Dirty.y = y;
+        gPs2Dirty.w = w;
+        gPs2Dirty.h = h;
+        return;
+    }
+    int x1 = SDL_min(gPs2Dirty.x, x);
+    int y1 = SDL_min(gPs2Dirty.y, y);
+    int x2 = SDL_max(gPs2Dirty.x + gPs2Dirty.w, x + w);
+    int y2 = SDL_max(gPs2Dirty.y + gPs2Dirty.h, y + h);
+    gPs2Dirty.x = x1;
+    gPs2Dirty.y = y1;
+    gPs2Dirty.w = x2 - x1;
+    gPs2Dirty.h = y2 - y1;
+}
+
+static void ps2MarkAllDirty()
+{
+    if (gSdlTextureSurface != NULL) {
+        ps2MarkDirty(0, 0, gSdlTextureSurface->w, gSdlTextureSurface->h);
+    }
+}
+
+// True while the direct GS path (ps2gs.cc) is presenting frames; the EE then
+// skips converting 8-bit pixels into the SDL texture surface entirely.
+static bool gPs2Direct = false;
+#endif
+
 // 0x4CB310
 void GNW95_SetPaletteEntries(unsigned char* palette, int start, int count)
 {
@@ -41,7 +88,15 @@ void GNW95_SetPaletteEntries(unsigned char* palette, int start, int count)
         }
 
         SDL_SetPaletteColors(gSdlSurface->format->palette, colors, start, count);
+#ifdef __PS2__
+        ps2gs_mark_palette_range(start, count);
+        if (!gPs2Direct) {
+            SDL_BlitSurface(gSdlSurface, NULL, gSdlTextureSurface, NULL);
+            ps2MarkAllDirty();
+        }
+#else
         SDL_BlitSurface(gSdlSurface, NULL, gSdlTextureSurface, NULL);
+#endif
     }
 }
 
@@ -59,7 +114,15 @@ void GNW95_SetPalette(unsigned char* palette)
         }
 
         SDL_SetPaletteColors(gSdlSurface->format->palette, colors, 0, 256);
+#ifdef __PS2__
+        ps2gs_mark_palette();
+        if (!gPs2Direct) {
+            SDL_BlitSurface(gSdlSurface, NULL, gSdlTextureSurface, NULL);
+            ps2MarkAllDirty();
+        }
+#else
         SDL_BlitSurface(gSdlSurface, NULL, gSdlTextureSurface, NULL);
+#endif
     }
 }
 
@@ -77,27 +140,54 @@ void GNW95_ShowRect(unsigned char* src, unsigned int srcPitch, unsigned int a3, 
     SDL_Rect destRect;
     destRect.x = destX;
     destRect.y = destY;
+#ifdef __PS2__
+    ps2gs_mark_dirty(destX, destY, srcWidth, srcHeight);
+    if (!gPs2Direct) {
+        SDL_BlitSurface(gSdlSurface, &srcRect, gSdlTextureSurface, &destRect);
+        ps2MarkDirty(destX, destY, srcWidth, srcHeight);
+    }
+#else
     SDL_BlitSurface(gSdlSurface, &srcRect, gSdlTextureSurface, &destRect);
+#endif
 }
 
 bool svga_init(VideoOptions* video_options)
 {
+#ifndef __PS2__
     SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
+#endif
 
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
         return false;
     }
 
+#ifdef __PS2__
+    Uint32 windowFlags = SDL_WINDOW_FULLSCREEN;
+#else
     Uint32 windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI;
+#endif
 
     if (video_options->fullscreen) {
         windowFlags |= SDL_WINDOW_FULLSCREEN;
     }
 
+#ifdef __PS2__
+    // The window size is the GS framebuffer size for the chosen TV mode; the
+    // renderer scales the game's 640x480 into it.
+    ps2video_load();
+    int ps2WindowWidth;
+    int ps2WindowHeight;
+    ps2video_framebuffer_size(&ps2WindowWidth, &ps2WindowHeight);
+    gSdlWindow = SDL_CreateWindow(GNW95_title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+        ps2WindowWidth,
+        ps2WindowHeight,
+        windowFlags);
+#else
     gSdlWindow = SDL_CreateWindow(GNW95_title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
         video_options->width * video_options->scale,
         video_options->height * video_options->scale,
         windowFlags);
+#endif
     if (gSdlWindow == NULL) {
         return false;
     }
@@ -183,7 +273,17 @@ static bool createRenderer(int width, int height)
         return false;
     }
 
+#ifdef __PS2__
+    // ABGR1555 is native to SDL's PS2 renderer: no per-frame CPU conversion,
+    // half the upload size. Fallout is 8-bit paletted (6 bits per channel), so
+    // 5 bits per channel is barely distinguishable.
+    gSdlTexture = SDL_CreateTexture(gSdlRenderer, SDL_PIXELFORMAT_ABGR1555, SDL_TEXTUREACCESS_STREAMING, width, height);
+    if (gSdlTexture != NULL) {
+        SDL_SetTextureBlendMode(gSdlTexture, SDL_BLENDMODE_NONE);
+    }
+#else
     gSdlTexture = SDL_CreateTexture(gSdlRenderer, SDL_PIXELFORMAT_RGB888, SDL_TEXTUREACCESS_STREAMING, width, height);
+#endif
     if (gSdlTexture == NULL) {
         return false;
     }
@@ -197,6 +297,14 @@ static bool createRenderer(int width, int height)
     if (gSdlTextureSurface == NULL) {
         return false;
     }
+
+#ifdef __PS2__
+    // Fresh texture: refill it from the 8-bit screen on the next present.
+    if (gSdlSurface != NULL) {
+        SDL_BlitSurface(gSdlSurface, NULL, gSdlTextureSurface, NULL);
+    }
+    ps2MarkAllDirty();
+#endif
 
     return true;
 }
@@ -227,9 +335,47 @@ void handleWindowSizeChanged()
 
 void renderPresent()
 {
+#ifdef __PS2__
+    ps2crash_heartbeat();
+    if (ps2gs_present(gSdlRenderer, gSdlSurface, screenGetWidth(), screenGetHeight())) {
+        gPs2Direct = true;
+        if (ps2osk_is_visible()) {
+            ps2crash_step("osk render", 0);
+        }
+        ps2osk_render(gSdlRenderer, screenGetWidth(), screenGetHeight());
+        SDL_RenderPresent(gSdlRenderer);
+        return;
+    }
+
+    if (gPs2Direct) {
+        // Falling back to the SDL path: bring its texture surface up to date.
+        gPs2Direct = false;
+        SDL_BlitSurface(gSdlSurface, NULL, gSdlTextureSurface, NULL);
+        ps2MarkAllDirty();
+    }
+
+    if (gPs2Dirty.w > 0 && gPs2Dirty.h > 0) {
+        int bpp = gSdlTextureSurface->format->BytesPerPixel;
+        const unsigned char* pixels = (const unsigned char*)gSdlTextureSurface->pixels
+            + gPs2Dirty.y * gSdlTextureSurface->pitch + gPs2Dirty.x * bpp;
+        SDL_UpdateTexture(gSdlTexture, &gPs2Dirty, pixels, gSdlTextureSurface->pitch);
+        gPs2Dirty.w = 0;
+        gPs2Dirty.h = 0;
+    }
+#else
     SDL_UpdateTexture(gSdlTexture, NULL, gSdlTextureSurface->pixels, gSdlTextureSurface->pitch);
+#endif
     SDL_RenderClear(gSdlRenderer);
+#ifdef __PS2__
+    if (!ps2zoom_render(gSdlRenderer, gSdlTexture, screenGetWidth(), screenGetHeight())) {
+        SDL_RenderCopy(gSdlRenderer, gSdlTexture, NULL, NULL);
+    }
+#else
     SDL_RenderCopy(gSdlRenderer, gSdlTexture, NULL, NULL);
+#endif
+#ifdef __PS2__
+    ps2osk_render(gSdlRenderer, screenGetWidth(), screenGetHeight());
+#endif
     SDL_RenderPresent(gSdlRenderer);
 }
 

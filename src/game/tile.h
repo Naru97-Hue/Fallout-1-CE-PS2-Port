@@ -51,6 +51,10 @@ void square_xy_roof(int screenX, int screenY, int elevation, int* coordX, int* c
 void square_render_roof(Rect* rect, int elevation);
 void tile_fill_roof(int x, int y, int elevation, bool on);
 void square_render_floor(Rect* rect, int elevation);
+#ifdef __PS2__
+void tile_bake_map();
+bool tile_refresh_is_enabled();
+#endif
 bool square_roof_intersect(int x, int y, int elevation);
 void grid_toggle();
 void grid_on();

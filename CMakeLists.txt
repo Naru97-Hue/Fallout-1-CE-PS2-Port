@@ -198,6 +198,8 @@ target_sources(${EXECUTABLE_NAME} PUBLIC
     "src/int/mousemgr.cc"
     "src/int/mousemgr.h"
     "src/int/movie.cc"
+    "src/int/ps2movie.cc"
+    "src/int/ps2movie.h"
     "src/int/movie.h"
     "src/int/nevs.cc"
     "src/int/nevs.h"
@@ -229,6 +231,21 @@ target_sources(${EXECUTABLE_NAME} PUBLIC
     "src/plib/gnw/debug.h"
     "src/plib/gnw/dxinput.cc"
     "src/plib/gnw/dxinput.h"
+    "src/plib/gnw/ps2osk.cc"
+    "src/plib/gnw/ps2osk.h"
+    "src/plib/gnw/ps2pad.cc"
+    "src/plib/gnw/ps2pad_analog.cc"
+    "src/plib/gnw/ps2zoom.cc"
+    "src/plib/gnw/ps2video.cc"
+    "src/plib/gnw/ps2gs.cc"
+    "src/plib/gnw/ps2map.cc"
+    "src/plib/gnw/ps2crash.cc"
+    "src/plib/gnw/ps2gs.h"
+    "src/plib/gnw/ps2map.h"
+    "src/plib/gnw/ps2crash.h"
+    "src/plib/gnw/ps2video.h"
+    "src/plib/gnw/ps2zoom.h"
+    "src/plib/gnw/ps2pad.h"
     "src/plib/gnw/grbuf.cc"
     "src/plib/gnw/grbuf.h"
     "src/plib/gnw/input.cc"
@@ -345,7 +362,16 @@ if(APPLE)
     set(MACOSX_BUNDLE_BUNDLE_VERSION "1.0.0")
 endif()
 
-if((NOT ${CMAKE_SYSTEM_NAME} MATCHES "Linux") AND (NOT ${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD") AND (NOT ${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD"))
+if(PS2)
+    find_package(SDL2 REQUIRED CONFIG)
+    set(SDL2_LIBRARIES SDL2::SDL2main SDL2::SDL2-static mpeg dma eedebug)
+    target_compile_definitions(${EXECUTABLE_NAME} PUBLIC _EE PS2 __PS2__)
+    # Don't halt the console on an integer divide by zero (MIPS GCC inserts a
+    # trap before every division by default).
+    target_compile_options(${EXECUTABLE_NAME} PRIVATE -mno-check-zero-division)
+    target_sources(${EXECUTABLE_NAME} PUBLIC "src/ps2_thread_stack.cc")
+    target_link_options(${EXECUTABLE_NAME} PUBLIC "-Wl,--wrap=SDL_CreateThreadInternal" "-Wl,--wrap=gsKit_init_screen" "-Wl,--defsym,_stack_size=0x100000")
+elseif((NOT ${CMAKE_SYSTEM_NAME} MATCHES "Linux") AND (NOT ${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD") AND (NOT ${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD"))
     add_subdirectory("third_party/sdl2")
 else()
     find_package(SDL2)

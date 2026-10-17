@@ -1,3 +1,6 @@
+#ifdef __PS2__
+#include "plib/gnw/ps2gs.h"
+#endif
 #include "plib/gnw/gnw.h"
 
 #include <algorithm>
@@ -985,6 +988,61 @@ void GNW_win_refresh(Window* w, Rect* rect, unsigned char* a3)
     }
 }
 
+#ifdef __PS2__
+int win_visible_rects(int win, Rect* rects, int maxRects)
+{
+    if (!GNW_win_init_flag || win < 0 || win >= MAX_WINDOW_COUNT) {
+        return 0;
+    }
+
+    Window* w = GNW_find(win);
+    if (w == NULL || (w->flags & WINDOW_HIDDEN) != 0) {
+        return 0;
+    }
+
+    RectPtr list = rect_malloc();
+    if (list == NULL) {
+        return 0;
+    }
+    list->rect = w->rect;
+    list->next = NULL;
+
+    for (int index = window_index[w->id] + 1; index < num_windows && list != NULL; index++) {
+        Window* other = window[index];
+        if ((other->flags & WINDOW_HIDDEN) == 0) {
+            rect_clip_list(&list, &(other->rect));
+        }
+    }
+
+    int count = 0;
+    while (list != NULL) {
+        RectPtr next = list->next;
+        if (count < maxRects) {
+            rects[count++] = list->rect;
+        }
+        rect_free(list);
+        list = next;
+    }
+
+    return count;
+}
+#endif
+
+#ifdef __PS2__
+int win_top_visible(int x, int y)
+{
+    for (int index = num_windows - 1; index >= 0; index--) {
+        Window* w = window[index];
+        if ((w->flags & WINDOW_HIDDEN) == 0
+            && x >= w->rect.ulx && x <= w->rect.lrx
+            && y >= w->rect.uly && y <= w->rect.lry) {
+            return w->id;
+        }
+    }
+    return -1;
+}
+#endif
+
 // 0x4C3654
 void win_refresh_all(Rect* rect)
 {
@@ -1018,6 +1076,12 @@ static void win_clip(Window* w, RectPtr* rectListNodePtr, unsigned char* a3)
     }
 
     if (a3 == screen_buffer || a3 == NULL) {
+#ifdef __PS2__
+        // The GS draws the cursor; nothing of it is in the screen buffer.
+        if (ps2gs_cursor_enabled()) {
+            return;
+        }
+#endif
         if (mouse_hidden() == 0) {
             Rect rect;
             mouse_get_rect(&rect);
@@ -1319,6 +1383,10 @@ static int colorClose(void* handle)
 // 0x4C42B8
 bool GNWSystemError(const char* text)
 {
+#ifdef __PS2__
+    debug_printf("GNWSystemError: %s\n", text);
+    printf("GNWSystemError: %s\n", text);
+#endif
     SDL_Cursor* prev = SDL_GetCursor();
     SDL_Cursor* cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_ARROW);
     SDL_SetCursor(cursor);

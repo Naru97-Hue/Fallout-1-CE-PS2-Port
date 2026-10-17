@@ -34,6 +34,7 @@ long compat_tell(int fileHandle);
 long compat_filelength(int fd);
 int compat_mkdir(const char* path);
 unsigned int compat_timeGetTime();
+void compat_spin_yield();
 FILE* compat_fopen(const char* path, const char* mode);
 int compat_remove(const char* path);
 int compat_rename(const char* oldFileName, const char* newFileName);

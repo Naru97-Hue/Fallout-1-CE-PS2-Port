@@ -12,6 +12,16 @@
 namespace fallout {
 
 static void mouse_colorize();
+
+#ifdef __PS2__
+// The GS draws the cursor as a sprite on top of the screen (see ps2gs.cc), so
+// it is never composited into the 8-bit screen and moving it doesn't make the
+// window system redraw what's under it.
+bool ps2gs_cursor_enabled();
+#define PS2_GS_CURSOR() ps2gs_cursor_enabled()
+#else
+#define PS2_GS_CURSOR() false
+#endif
 static void mouse_anim();
 static void mouse_clip();
 
@@ -217,8 +227,10 @@ int mouse_set_shape(unsigned char* buf, int width, int length, int full, int hot
     bool cursorWasHidden = mouse_is_hidden;
     if (!mouse_is_hidden && have_mouse) {
         mouse_is_hidden = true;
-        mouse_get_rect(&rect);
-        win_refresh_all(&rect);
+        if (!PS2_GS_CURSOR()) {
+            mouse_get_rect(&rect);
+            win_refresh_all(&rect);
+        }
     }
 
     if (width != mouse_width || length != mouse_length) {
@@ -339,6 +351,10 @@ void mouse_show()
     int v3;
 
     v2 = mouse_buf;
+    if (have_mouse && PS2_GS_CURSOR()) {
+        mouse_is_hidden = false;
+        return;
+    }
     if (have_mouse) {
         if (!mouse_blit_trans || !mouse_is_hidden) {
             win_get_mouse_buf(mouse_buf);
@@ -408,7 +424,9 @@ void mouse_hide()
             rect.lry = mouse_y + mouse_length - 1;
 
             mouse_is_hidden = true;
-            win_refresh_all(&rect);
+            if (!PS2_GS_CURSOR()) {
+                win_refresh_all(&rect);
+            }
         }
     }
 }
@@ -626,7 +644,9 @@ void mouse_simulate_input(int delta_x, int delta_y, int buttons)
         mouse_y += delta_y;
         mouse_clip();
 
-        win_refresh_all(&mouseRect);
+        if (!PS2_GS_CURSOR()) {
+            win_refresh_all(&mouseRect);
+        }
 
         mouse_show();
 
@@ -634,6 +654,23 @@ void mouse_simulate_input(int delta_x, int delta_y, int buttons)
         raw_y = mouse_y;
     }
 }
+
+#ifdef __PS2__
+bool mouse_get_gs_cursor(unsigned char** shape, int* width, int* height, int* pitch, int* x, int* y, int* trans)
+{
+    if (!have_mouse || mouse_is_hidden || mouse_shape == NULL) {
+        return false;
+    }
+    *shape = mouse_shape;
+    *width = mouse_width;
+    *height = mouse_length;
+    *pitch = mouse_full;
+    *x = mouse_x;
+    *y = mouse_y;
+    *trans = (unsigned char)mouse_trans;
+    return true;
+}
+#endif
 
 // 0x4B5154
 bool mouse_in(int left, int top, int right, int bottom)

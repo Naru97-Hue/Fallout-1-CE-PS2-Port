@@ -33,6 +33,9 @@
 #include "game/worldmap.h"
 #include "platform_compat.h"
 #include "plib/color/color.h"
+#ifdef __PS2__
+#include "plib/gnw/ps2map.h"
+#endif
 #include "plib/gnw/debug.h"
 #include "plib/gnw/gnw.h"
 #include "plib/gnw/grbuf.h"
@@ -1601,6 +1604,25 @@ static void map_scroll_refresh_game(Rect* rect)
     if (rect_inside_bound(rect, &map_display_rect, &rectToUpdate) == -1) {
         return;
     }
+
+#ifdef __PS2__
+    if (ps2map_active()) {
+        if (ps2map_take_baked()) {
+            rectToUpdate = map_display_rect;
+        }
+        ps2map_note_change();
+        buf_fill(display_buf + rectToUpdate.uly * rectGetWidth(&map_display_rect) + rectToUpdate.ulx,
+            rectGetWidth(&rectToUpdate),
+            rectGetHeight(&rectToUpdate),
+            rectGetWidth(&map_display_rect),
+            0);
+        gPs2MapMode = PS2MAP_MODE_COLLECT;
+        obj_render_pre_roof(&rectToUpdate, map_elevation);
+        gPs2MapMode = PS2MAP_MODE_DRAW;
+        obj_render_post_roof(&rectToUpdate, map_elevation);
+        return;
+    }
+#endif
 
     // CE: Clear dirty rect to prevent most of the visual artifacts near map
     // edges.

@@ -724,6 +724,21 @@ int soundPlay(Sound* sound)
         return soundErrorno;
     }
 
+#ifdef __PS2__
+    // A sound with dataSize 0 is corrupt or already freed; playing it would
+    // divide by zero below (a hard trap on the PS2). Log it and skip.
+    if (sound->dataSize <= 0) {
+        static int reports = 0;
+        if (reports < 5) {
+            reports++;
+            debug_printf("soundPlay: bad sound %p (dataSize=%d buffer=%d type=0x%x flags=0x%x status=0x%x) - skipped\n",
+                (void*)sound, sound->dataSize, sound->soundBuffer, sound->type, sound->soundFlags, sound->statusFlags);
+        }
+        soundErrorno = SOUND_UNKNOWN_ERROR;
+        return soundErrorno;
+    }
+#endif
+
     if ((sound->statusFlags & SOUND_STATUS_DONE) != 0) {
         soundRewind(sound);
     }

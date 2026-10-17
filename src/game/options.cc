@@ -819,6 +819,9 @@ static void ShadeScreen(bool is_world_map)
 
         int windowWidth = 640;
         int windowHeight = win_height(display_win);
+#ifdef __PS2__
+        tile_bake_map();
+#endif
         unsigned char* windowBuffer = win_get_buf(display_win);
         grey_buf(windowBuffer, windowWidth, windowHeight, windowWidth);
 

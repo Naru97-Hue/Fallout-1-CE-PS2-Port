@@ -2,6 +2,10 @@
 
 #include <string.h>
 
+#include "plib/gnw/debug.h"
+
+#include <string.h>
+
 #include <mutex>
 
 #include <SDL.h>
@@ -21,6 +25,10 @@ struct AudioEngineSoundBuffer {
     bool playing;
     bool looping;
     unsigned int pos;
+#ifdef __PS2__
+    // Fractional source position (16.16) for the direct PS2 mixer.
+    unsigned int frac;
+#endif
     SDL_AudioStream* stream;
     std::recursive_mutex mutex;
 };
@@ -44,8 +52,120 @@ static bool soundBufferIsValid(int soundBufferIndex)
     return soundBufferIndex >= 0 && soundBufferIndex < AUDIO_ENGINE_SOUND_BUFFERS;
 }
 
+#ifdef __PS2__
+// Direct software mixer for the PS2.
+//
+// The generic path below converts each sound one sample frame at a time with
+// SDL_AudioStreamPut/Get, which is far too slow for the EE and makes the audio
+// thread miss its deadlines (crackling, stutter, wrong speed). This mixes every
+// active buffer straight into the 16-bit stereo output in one pass, resampling
+// with a 16.16 fixed-point step, with volume and clipping.
+static void audioEngineMixinPs2(Uint8* stream, int length)
+{
+    Sint16* out = (Sint16*)stream;
+    int outChannels = gAudioEngineSpec.channels;
+    int outFrames = length / (2 * outChannels);
+
+    static int accumulator[4096 * 2];
+    if (outFrames > 4096) {
+        outFrames = 4096;
+    }
+    memset(accumulator, 0, sizeof(int) * outFrames * 2);
+
+    if (GNW95_isActive) {
+        for (int index = 0; index < AUDIO_ENGINE_SOUND_BUFFERS; index++) {
+            AudioEngineSoundBuffer* soundBuffer = &(gAudioEngineSoundBuffers[index]);
+            std::lock_guard<std::recursive_mutex> lock(soundBuffer->mutex);
+
+            if (!soundBuffer->active || !soundBuffer->playing || soundBuffer->data == NULL) {
+                continue;
+            }
+
+            int bytesPerSample = soundBuffer->bitsPerSample / 8;
+            int frameSize = bytesPerSample * soundBuffer->channels;
+            if (frameSize <= 0 || soundBuffer->size < (unsigned int)frameSize) {
+                continue;
+            }
+
+            unsigned int totalFrames = soundBuffer->size / frameSize;
+            unsigned int frame = soundBuffer->pos / frameSize;
+            unsigned int frac = soundBuffer->frac;
+            unsigned int step = (unsigned int)(((unsigned long long)soundBuffer->rate << 16) / gAudioEngineSpec.freq);
+            int volume = soundBuffer->volume; // 0..SDL_MIX_MAXVOLUME (128)
+            const unsigned char* data = (const unsigned char*)soundBuffer->data;
+            bool stereo = soundBuffer->channels == 2;
+            bool finished = false;
+
+            for (int i = 0; i < outFrames; i++) {
+                const unsigned char* src = data + frame * frameSize;
+                int left;
+                int right;
+                if (bytesPerSample == 2) {
+                    left = ((const Sint16*)src)[0];
+                    right = stereo ? ((const Sint16*)src)[1] : left;
+                } else {
+                    left = ((int)((const Sint8*)src)[0]) << 8;
+                    right = stereo ? (((int)((const Sint8*)src)[1]) << 8) : left;
+                }
+
+                accumulator[i * 2] += (left * volume) >> 7;
+                accumulator[i * 2 + 1] += (right * volume) >> 7;
+
+                frac += step;
+                frame += frac >> 16;
+                frac &= 0xFFFF;
+
+                if (frame >= totalFrames) {
+                    if (soundBuffer->looping) {
+                        frame %= totalFrames;
+                    } else {
+                        finished = true;
+                        frame = totalFrames;
+                        break;
+                    }
+                }
+            }
+
+            soundBuffer->frac = frac;
+            soundBuffer->pos = finished ? soundBuffer->size : frame * frameSize;
+            if (finished) {
+                // Match the original mixer: leave pos at the end of the data.
+                soundBuffer->playing = false;
+            }
+        }
+    }
+
+    for (int i = 0; i < outFrames; i++) {
+        int left = accumulator[i * 2];
+        int right = accumulator[i * 2 + 1];
+        if (left > 32767) left = 32767;
+        if (left < -32768) left = -32768;
+        if (right > 32767) right = 32767;
+        if (right < -32768) right = -32768;
+        if (outChannels == 2) {
+            out[i * 2] = (Sint16)left;
+            out[i * 2 + 1] = (Sint16)right;
+        } else {
+            out[i] = (Sint16)((left + right) / 2);
+        }
+    }
+
+    // Silence anything we didn't fill (oversized request).
+    int written = outFrames * 2 * outChannels;
+    if (written < length) {
+        memset(stream + written, 0, length - written);
+    }
+}
+#endif
+
 static void audioEngineMixin(void* userData, Uint8* stream, int length)
 {
+#ifdef __PS2__
+    if (gAudioEngineSpec.format == AUDIO_S16) {
+        audioEngineMixinPs2(stream, length);
+        return;
+    }
+#endif
     memset(stream, gAudioEngineSpec.silence, length);
 
     if (!GNW95_isActive) {
@@ -103,10 +223,22 @@ bool audioEngineInit()
     desiredSpec.freq = 22050;
     desiredSpec.format = AUDIO_S16;
     desiredSpec.channels = 2;
+#ifdef __PS2__
+    // Larger buffer so a slow frame doesn't starve the audio thread.
+    desiredSpec.samples = 2048;
+#else
     desiredSpec.samples = 1024;
+#endif
     desiredSpec.callback = audioEngineMixin;
 
+#ifdef __PS2__
+    // Keep 16-bit samples so the direct mixer can be used; rate/channels may
+    // still change and are handled by the mixer.
+    gAudioEngineDeviceId = SDL_OpenAudioDevice(NULL, 0, &desiredSpec, &gAudioEngineSpec, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE | SDL_AUDIO_ALLOW_CHANNELS_CHANGE | SDL_AUDIO_ALLOW_SAMPLES_CHANGE);
+    debug_printf("audio: device %d Hz, %d ch, format 0x%x, %d samples\n", gAudioEngineSpec.freq, gAudioEngineSpec.channels, gAudioEngineSpec.format, gAudioEngineSpec.samples);
+#else
     gAudioEngineDeviceId = SDL_OpenAudioDevice(NULL, 0, &desiredSpec, &gAudioEngineSpec, SDL_AUDIO_ALLOW_ANY_CHANGE);
+#endif
     if (gAudioEngineDeviceId == -1) {
         return false;
     }
@@ -162,6 +294,9 @@ int audioEngineCreateSoundBuffer(unsigned int size, int bitsPerSample, int chann
             soundBuffer->playing = false;
             soundBuffer->looping = false;
             soundBuffer->pos = 0;
+#ifdef __PS2__
+            soundBuffer->frac = 0;
+#endif
             soundBuffer->data = malloc(size);
             soundBuffer->stream = SDL_NewAudioStream(bitsPerSample == 16 ? AUDIO_S16 : AUDIO_S8, channels, rate, gAudioEngineSpec.format, gAudioEngineSpec.channels, gAudioEngineSpec.freq);
             return index;
@@ -367,6 +502,9 @@ bool audioEngineSoundBufferSetCurrentPosition(int soundBufferIndex, unsigned int
     }
 
     soundBuffer->pos = pos % soundBuffer->size;
+#ifdef __PS2__
+    soundBuffer->frac = 0;
+#endif
 
     return true;
 }

@@ -800,7 +800,7 @@ static int _syncWait()
         if (((_sync_time + 1000 * compat_timeGetTime()) & 0x80000000) != 0) {
             result = 1;
             while (((_sync_time + 1000 * compat_timeGetTime()) & 0x80000000) != 0)
-                ;
+                compat_spin_yield();
         }
         _sync_time += _sync_wait_quanta;
     }
@@ -1157,6 +1157,7 @@ static void _MVE_syncSync()
 {
     if (_sync_active) {
         while (((_sync_time + 1000 * compat_timeGetTime()) & 0x80000000) != 0) {
+            compat_spin_yield();
         }
     }
 }
@@ -1199,6 +1200,9 @@ static void _MVE_sndSync()
     }
 
     while (1) {
+        // PS2: let the SDL audio thread advance the play cursor we wait on.
+        compat_spin_yield();
+
         if (!audioEngineSoundBufferGetStatus(gMveSoundBuffer, &dwStatus)) {
             return;
         }
@@ -1323,6 +1327,9 @@ static int _syncWaitLevel(int a1)
     v2 = _sync_time + a1;
     do {
         result = v2 + 1000 * compat_timeGetTime();
+        if (result < 0) {
+            compat_spin_yield();
+        }
     } while (result < 0);
 
     _sync_time += _sync_wait_quanta;

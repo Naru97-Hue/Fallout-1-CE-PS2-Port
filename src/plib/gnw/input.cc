@@ -8,6 +8,11 @@
 #include "plib/color/color.h"
 #include "plib/gnw/button.h"
 #include "plib/gnw/dxinput.h"
+#ifdef __PS2__
+#include "plib/gnw/ps2crash.h"
+#include "plib/gnw/ps2osk.h"
+#include "plib/gnw/ps2pad.h"
+#endif
 #include "plib/gnw/gnw.h"
 #include "plib/gnw/grbuf.h"
 #include "plib/gnw/intrface.h"
@@ -645,6 +650,7 @@ void pause_for_tocks(unsigned int delay)
     unsigned int diff = elapsed_tocks(end, start);
     while (diff < delay) {
         process_bk();
+        compat_spin_yield();
 
         end = get_time();
 
@@ -661,6 +667,7 @@ void block_for_tocks(unsigned int ms)
     do {
         // NOTE: Uninline
         diff = elapsed_time(start);
+        compat_spin_yield();
     } while (diff < ms);
 }
 
@@ -1079,6 +1086,21 @@ void GNW95_input_exit()
 }
 
 // 0x4B4538
+#ifdef __PS2__
+static void GNW95_ps2pad_key(int scancode, bool down)
+{
+    ps2crash_step(down ? "pad key down (SDL scancode)" : "pad key up (SDL scancode)", scancode);
+    if (kb_is_disabled()) {
+        return;
+    }
+
+    KeyboardData keyboardData;
+    keyboardData.key = scancode;
+    keyboardData.down = down ? 1 : 0;
+    GNW95_process_key(&keyboardData);
+}
+#endif
+
 void GNW95_process_message()
 {
     // We need to process event loop even if program is not active or keyboard
@@ -1088,6 +1110,11 @@ void GNW95_process_message()
     KeyboardData keyboardData;
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
+#ifdef __PS2__
+        if (ps2pad_handle_event(&e, GNW95_ps2pad_key)) {
+            continue;
+        }
+#endif
         switch (e.type) {
         case SDL_MOUSEMOTION:
         case SDL_MOUSEBUTTONDOWN:
@@ -1139,6 +1166,12 @@ void GNW95_process_message()
     }
 
     touch_process_gesture();
+
+#ifdef __PS2__
+    if (ps2osk_consume_dirty()) {
+        renderPresent();
+    }
+#endif
 
     if (GNW95_isActive && !kb_is_disabled()) {
         // NOTE: Uninline

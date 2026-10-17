@@ -5,6 +5,9 @@
 
 #include <algorithm>
 
+#ifdef __PS2__
+#include "plib/gnw/ps2gs.h"
+#endif
 #include "plib/gnw/input.h"
 #include "plib/gnw/svga.h"
 
@@ -207,6 +210,49 @@ int Color2RGB(int a1)
 // 0x4BFEE0
 void fadeSystemPalette(unsigned char* oldPalette, unsigned char* newPalette, int steps)
 {
+#ifdef __PS2__
+    // Fades to or from black: keep the full palette on the GS and dim the
+    // picture there (one brightness pass per frame) instead of loading a new
+    // palette every step, which also forced every map palette to be rebuilt.
+    if (ps2gs_fades_supported() && steps > 0) {
+        bool toBlack = true;
+        bool fromBlack = true;
+        for (int index = 0; index < 768; index++) {
+            if (newPalette[index] != 0) {
+                toBlack = false;
+            }
+            if (oldPalette[index] != 0) {
+                fromBlack = false;
+            }
+        }
+
+        if (toBlack != fromBlack) {
+            setSystemPalette(toBlack ? oldPalette : newPalette);
+            for (int step = 0; step < steps; step++) {
+                sharedFpsLimiter.mark();
+
+                if (colorFadeBkFuncP != NULL) {
+                    if (step % 128 == 0) {
+                        colorFadeBkFuncP();
+                    }
+                }
+
+                int level = 0x80 * step / steps;
+                ps2gs_set_fade(toBlack ? 0x80 - level : level);
+                renderPresent();
+                sharedFpsLimiter.throttle();
+            }
+
+            sharedFpsLimiter.mark();
+            ps2gs_set_fade(0x80);
+            setSystemPalette(newPalette);
+            renderPresent();
+            sharedFpsLimiter.throttle();
+            return;
+        }
+    }
+#endif
+
     for (int step = 0; step < steps; step++) {
         sharedFpsLimiter.mark();
 

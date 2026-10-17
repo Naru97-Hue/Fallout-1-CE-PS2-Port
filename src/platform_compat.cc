@@ -1,6 +1,10 @@
 #include "platform_compat.h"
 
+#include <stdio.h>
 #include <string.h>
+
+
+#include <SDL.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -231,7 +235,10 @@ int compat_mkdir(const char* path)
 
 unsigned int compat_timeGetTime()
 {
-#ifdef _WIN32
+#if defined(__PS2__)
+    // newlib's steady_clock is not reliable on the PS2; SDL's timer is.
+    return SDL_GetTicks();
+#elif defined(_WIN32)
     return timeGetTime();
 #else
     static auto start = std::chrono::steady_clock::now();
@@ -270,7 +277,47 @@ int compat_rename(const char* oldFileName, const char* newFileName)
     compat_windows_path_to_native(nativeNewFileName);
     compat_resolve_path(nativeNewFileName);
 
+#ifdef __PS2__
+    // PCSX2's host: device (and some PS2 file systems) can't rename: copy the
+    // file and remove the original instead.
+    if (rename(nativeOldFileName, nativeNewFileName) == 0) {
+        return 0;
+    }
+    FILE* in = fopen(nativeOldFileName, "rb");
+    if (in == NULL) {
+        return -1;
+    }
+    remove(nativeNewFileName);
+    FILE* out = fopen(nativeNewFileName, "wb");
+    if (out == NULL) {
+        fclose(in);
+        return -1;
+    }
+    static char buffer[16384];
+    bool ok = true;
+    size_t n;
+    while ((n = fread(buffer, 1, sizeof(buffer), in)) > 0) {
+        if (fwrite(buffer, 1, n, out) != n) {
+            ok = false;
+            break;
+        }
+    }
+    if (ferror(in)) {
+        ok = false;
+    }
+    fclose(in);
+    if (fclose(out) != 0) {
+        ok = false;
+    }
+    if (!ok) {
+        remove(nativeNewFileName);
+        return -1;
+    }
+    remove(nativeOldFileName);
+    return 0;
+#else
     return rename(nativeOldFileName, nativeNewFileName);
+#endif
 }
 
 void compat_windows_path_to_native(char* path)
@@ -288,7 +335,9 @@ void compat_windows_path_to_native(char* path)
 
 void compat_resolve_path(char* path)
 {
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__PS2__)
+    // (PS2: host:, FAT and ISO9660 are all case-insensitive, and scanning the
+    // directory over host:/USB on every fopen is slow, so this is skipped.)
     char* pch = path;
 
     DIR* dir;
@@ -354,6 +403,19 @@ long getFileSize(FILE* stream)
     long filesize = ftell(stream);
     fseek(stream, originalOffset, SEEK_SET);
     return filesize;
+}
+
+} // namespace fallout
+
+namespace fallout {
+
+void compat_spin_yield()
+{
+#ifdef __PS2__
+    // The PS2 kernel does not time-slice threads: give the audio/IO threads a
+    // chance to run while the movie player waits for its next frame.
+    SDL_Delay(1);
+#endif
 }
 
 } // namespace fallout

@@ -22,7 +22,22 @@ typedef struct MemoryBlockHeader {
 
     // See `MEMORY_BLOCK_HEADER_GUARD`.
     int guard;
+
+#ifdef __PS2__
+    // PS2: pad the header to 16 bytes so returned pointers stay 16-byte
+    // aligned. Structs such as the script engine's Program contain jmp_buf
+    // (128-bit registers), so GCC accesses them with LQ/SQ, which silently
+    // drop the low 4 address bits. With the original 8-byte header every such
+    // access hit memory 8 bytes away and corrupted neighbouring fields.
+    int padding[2];
+#endif
 } MemoryBlockHeader;
+
+#ifdef __PS2__
+#include <malloc.h>
+static_assert(sizeof(MemoryBlockHeader) == 16, "PS2 memory header must keep 16-byte alignment");
+#define PS2_RAW_ALIGN 16
+#endif
 
 // A footer of a memory block.
 typedef struct MemoryBlockFooter {
@@ -83,7 +98,11 @@ static void* my_malloc(size_t size)
         size += sizeof(MemoryBlockHeader) + sizeof(MemoryBlockFooter);
         size += sizeof(int) - size % sizeof(int);
 
+#ifdef __PS2__
+        unsigned char* block = (unsigned char*)memalign(PS2_RAW_ALIGN, size);
+#else
         unsigned char* block = (unsigned char*)malloc(size);
+#endif
         if (block != NULL) {
             // NOTE: Uninline.
             ptr = mem_prep_block(block, size);
@@ -127,7 +146,22 @@ static void* my_realloc(void* ptr, size_t size)
             size += sizeof(int) - size % sizeof(int);
         }
 
+#ifdef __PS2__
+        // realloc() doesn't preserve memalign()'s alignment; allocate, copy,
+        // free instead.
+        unsigned char* newBlock = NULL;
+        if (size != 0) {
+            newBlock = (unsigned char*)memalign(PS2_RAW_ALIGN, size);
+            if (newBlock != NULL) {
+                memcpy(newBlock, block, oldSize < size ? oldSize : size);
+                free(block);
+            }
+        } else {
+            free(block);
+        }
+#else
         unsigned char* newBlock = (unsigned char*)realloc(block, size);
+#endif
         if (newBlock != NULL) {
             mem_allocated += size;
             if (mem_allocated > max_allocated) {

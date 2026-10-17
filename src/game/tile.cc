@@ -18,6 +18,9 @@
 #include "plib/gnw/debug.h"
 #include "plib/gnw/grbuf.h"
 #include "plib/gnw/input.h"
+#ifdef __PS2__
+#include "plib/gnw/ps2map.h"
+#endif
 
 namespace fallout {
 
@@ -558,6 +561,10 @@ int tile_set_center(int tile, int flags)
 
     tile_center_tile = tile;
 
+#ifdef __PS2__
+    ps2map_note_change();
+#endif
+
     // CE: Updates bounds screen coordinates.
     tile_update_bounds_rect();
 
@@ -600,6 +607,31 @@ static void refresh_game(Rect* rect, int elevation)
     if (rect_inside_bound(rect, &buf_rect, &rectToUpdate) == -1) {
         return;
     }
+
+#ifdef __PS2__
+    if (ps2map_active()) {
+        // The GS draws floor, objects, roofs and the edge shadow; the EE
+        // only draws what goes on top of the roofs (outlines, floating text,
+        // projectiles). Everything else stays index 0 (a hole).
+        if (ps2map_take_baked()) {
+            rectToUpdate = buf_rect;
+        }
+        ps2map_note_change();
+        buf_fill(buf + buf_full * rectToUpdate.uly + rectToUpdate.ulx,
+            rectGetWidth(&rectToUpdate),
+            rectGetHeight(&rectToUpdate),
+            buf_full,
+            0);
+        // Still run the object pass: it records the outlined objects for
+        // the post-roof pass and updates on-screen positions (mouse picking).
+        gPs2MapMode = PS2MAP_MODE_COLLECT;
+        obj_render_pre_roof(&rectToUpdate, elevation);
+        gPs2MapMode = PS2MAP_MODE_DRAW;
+        obj_render_post_roof(&rectToUpdate, elevation);
+        blit(&rectToUpdate);
+        return;
+    }
+#endif
 
     buf_fill(buf + buf_full * rectToUpdate.uly + rectToUpdate.ulx,
         rectGetWidth(&rectToUpdate),
@@ -1347,6 +1379,14 @@ static void roof_draw(int fid, int x, int y, Rect* rect, int light)
                 for (int i = 0; i < 4; i++) {
                     Rect* cr = &(rects[i]);
                     if (cr->ulx <= cr->lrx && cr->uly <= cr->lry) {
+#ifdef __PS2__
+                        if (gPs2MapMode == PS2MAP_MODE_EMIT) {
+                            ps2map_emit_part(fid, 0, 0, art_frame_data(tileFrm, 0, 0), tileWidth, tileHeight,
+                                tileFrmBuffer + tileWidth * (cr->uly - tileRect.uly) + (cr->ulx - tileRect.ulx),
+                                cr->lrx - cr->ulx + 1, cr->lry - cr->uly + 1, cr->ulx, cr->uly, PS2MAP_CLUT_LIGHT, light);
+                            continue;
+                        }
+#endif
                         dark_trans_buf_to_buf(tileFrmBuffer + tileWidth * (cr->uly - tileRect.uly) + (cr->ulx - tileRect.ulx),
                             cr->lrx - cr->ulx + 1,
                             cr->lry - cr->uly + 1,
@@ -1360,6 +1400,19 @@ static void roof_draw(int fid, int x, int y, Rect* rect, int light)
                 }
 
                 unsigned char* eggBuf = art_frame_data(eggFrm, 0, 0);
+#ifdef __PS2__
+                if (gPs2MapMode == PS2MAP_MODE_EMIT) {
+                    ps2map_emit_egg(tileFrmBuffer + tileWidth * (intersectedRect.uly - tileRect.uly) + (intersectedRect.ulx - tileRect.ulx),
+                        tileWidth,
+                        intersectedRect.lrx - intersectedRect.ulx + 1,
+                        intersectedRect.lry - intersectedRect.uly + 1,
+                        intersectedRect.ulx,
+                        intersectedRect.uly,
+                        eggBuf + eggWidth * (intersectedRect.uly - eggRect.uly) + (intersectedRect.ulx - eggRect.ulx),
+                        eggWidth,
+                        light);
+                } else
+#endif
                 intensity_mask_buf_to_buf(tileFrmBuffer + tileWidth * (intersectedRect.uly - tileRect.uly) + (intersectedRect.ulx - tileRect.ulx),
                     intersectedRect.lrx - intersectedRect.ulx + 1,
                     intersectedRect.lry - intersectedRect.uly + 1,
@@ -1370,6 +1423,13 @@ static void roof_draw(int fid, int x, int y, Rect* rect, int light)
                     eggWidth,
                     light);
             } else {
+#ifdef __PS2__
+                if (gPs2MapMode == PS2MAP_MODE_EMIT) {
+                    ps2map_emit_part(fid, 0, 0, art_frame_data(tileFrm, 0, 0), tileWidth, tileHeight,
+                        tileFrmBuffer, tileRect.lrx - tileRect.ulx + 1, tileRect.lry - tileRect.uly + 1,
+                        tileRect.ulx, tileRect.uly, PS2MAP_CLUT_LIGHT, light);
+                } else
+#endif
                 dark_trans_buf_to_buf(tileFrmBuffer, tileRect.lrx - tileRect.ulx + 1, tileRect.lry - tileRect.uly + 1, tileWidth, buf, tileRect.ulx, tileRect.uly, buf_full, light);
             }
 
@@ -1686,6 +1746,15 @@ void floor_draw(int fid, int x, int y, Rect* rect)
             v23++;
         }
 
+#ifdef __PS2__
+        if (v23 == 9 && gPs2MapMode == PS2MAP_MODE_EMIT) {
+            unsigned char* frame_data = art_frame_data(art, 0, 0);
+            ps2map_emit_part(fid, 0, 0, frame_data, frameWidth, frameHeight, frame_data + frameWidth * v78 + v79,
+                v77, v76, x, y, PS2MAP_CLUT_LIGHT, verticies[0].intensity);
+            goto out;
+        }
+#endif
+
         if (v23 == 9) {
             unsigned char* frame_data = art_frame_data(art, 0, 0);
             dark_trans_buf_to_buf(frame_data + frameWidth * v78 + v79, v77, v76, frameWidth, buf, x, y, buf_full, verticies[0].intensity);
@@ -1799,6 +1868,32 @@ void floor_draw(int fid, int x, int y, Rect* rect)
                 }
             }
         }
+
+#ifdef __PS2__
+        if (gPs2MapMode == PS2MAP_MODE_EMIT) {
+            // Light the whole tile here (exactly like below) and let the GS
+            // draw the result; it's cached by tile + light values.
+            static unsigned char lit[80 * 40];
+            if (frameWidth <= 80 && frameHeight <= 40) {
+                unsigned char* sp = art_frame_data(art, 0, 0);
+                int* ip = &(intensity_map[160]);
+                for (int row = 0; row < frameHeight; row++) {
+                    for (int col = 0; col < frameWidth; col++) {
+                        unsigned char c = sp[col];
+                        lit[row * frameWidth + col] = c != 0 ? intensityColorTable[c][ip[col] >> 9] : 0;
+                    }
+                    sp += frameWidth;
+                    ip += 80;
+                }
+                int light[10];
+                for (int i = 0; i < 10; i++) {
+                    light[i] = verticies[i].intensity;
+                }
+                ps2map_emit_lit_tile(fid, light, lit, art_frame_data(art, 0, 0), frameWidth, frameHeight, savedX, savedY);
+            }
+            goto out;
+        }
+#endif
 
         unsigned char* v66 = buf + buf_full * y + x;
         unsigned char* v67 = art_frame_data(art, 0, 0) + frameWidth * v78 + v79;
@@ -2106,6 +2201,17 @@ void bounds_render(Rect* rect, int elevation)
 
     Rect edge;
 
+#ifdef __PS2__
+    if (gPs2MapMode == PS2MAP_MODE_EMIT) {
+        // Full strips; the GS clips them to the visible area.
+        ps2map_emit_shadow(tile_bounds_rect.ulx, tile_bounds_rect.uly, tile_bounds_rect.ulx + kShadowSize, tile_bounds_rect.lry, 0);
+        ps2map_emit_shadow(tile_bounds_rect.ulx, tile_bounds_rect.uly, tile_bounds_rect.lrx, tile_bounds_rect.uly + kShadowSize, 1);
+        ps2map_emit_shadow(tile_bounds_rect.lrx - kShadowSize, tile_bounds_rect.uly, tile_bounds_rect.lrx, tile_bounds_rect.lry, 2);
+        ps2map_emit_shadow(tile_bounds_rect.ulx, tile_bounds_rect.lry - kShadowSize, tile_bounds_rect.lrx, tile_bounds_rect.lry, 3);
+        return;
+    }
+#endif
+
     // Left.
     edge.ulx = tile_bounds_rect.ulx;
     edge.uly = tile_bounds_rect.uly;
@@ -2174,5 +2280,26 @@ void bounds_render(Rect* rect, int elevation)
         }
     }
 }
+
+
+#ifdef __PS2__
+// Before code copies or shades the map window (save thumbnails, dialogue
+// background, options screen): have the EE draw the full picture into it.
+void tile_bake_map()
+{
+    if (buf == NULL || !ps2map_active()) {
+        return;
+    }
+    ps2map_set_suspended(true);
+    tile_refresh_display();
+    ps2map_set_suspended(false);
+    ps2map_mark_baked();
+}
+
+bool tile_refresh_is_enabled()
+{
+    return refresh_enabled && buf != NULL;
+}
+#endif
 
 } // namespace fallout
