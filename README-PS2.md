@@ -72,6 +72,10 @@ The PS2 build ignores f1_res.ini and always runs at 640x480.
 Launch FALLOUT.ELF from that folder with wLaunchELF. The game looks for its
 data next to the ELF. Save games go to DATA\SAVEGAME on the stick.
 
+Save games: the map states inside each save slot are stored compressed on
+PS2 (much smaller and faster to save/load). Saves from older PS2 builds still
+load; PS2 saves can't be copied to the PC version.
+
 An internal HDD (hdd0:) or MX4SIO SD card should also work, since SDL's PS2
 startup loads those drivers too.
 
@@ -127,7 +131,8 @@ Open it from the main menu (OPTIONS) or in game from the Options menu
             and what the D-pad does (jump to targets / arrow keys)
   GAMEPAD   picture of the DualShock showing what every button does now
   KEYBOARD  picture of a keyboard with the game's hotkeys marked
-  VIDEO     TV output (480i/480p/720p/1080i) and the GS renderer
+  SYSTEM    save/load games on the game folder (USB/HDD) or memory card
+            1 or 2 (saves go in a FALLOUT folder on the card), plus TV output (480i/480p/720p/1080i) and the GS renderer
             switches (map, mouse cursor, fades; after restart). A new TV
             output must be confirmed (YES) within 6 seconds, otherwise it
             switches back by itself - so a TV that can't show it is safe.

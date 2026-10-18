@@ -49,6 +49,11 @@
 #include "plib/gnw/svga.h"
 #include "plib/gnw/text.h"
 
+#ifdef __PS2__
+#include <stdlib.h>
+#include <zlib.h>
+#endif
+
 namespace fallout {
 
 #define LOAD_SAVE_SIGNATURE "FALLOUT SAVE FILE"
@@ -148,6 +153,9 @@ static int GameMap2Slot(DB_FILE* stream);
 static int SlotMap2Game(DB_FILE* stream);
 static int mygets(char* dest, DB_FILE* stream);
 static int copy_file(const char* a1, const char* a2);
+#ifdef __PS2__
+static int copy_file_packed(const char* src, const char* dest, bool pack);
+#endif
 static int SaveBackup();
 static int RestoreSave();
 static int LoadObjDudeCid(DB_FILE* stream);
@@ -2319,6 +2327,17 @@ static int EndLoad(DB_FILE* stream)
 }
 
 // 0x4714BC
+#ifdef __PS2__
+// Map states and the automap are stored compressed in save slots on PS2
+// (a fraction of the size: much faster to write and read on a memory card
+// or USB stick). Older, uncompressed saves still load.
+#define SAVE_COPY(src, dest) copy_file_packed(src, dest, true)
+#define LOAD_COPY(src, dest) copy_file_packed(src, dest, false)
+#else
+#define SAVE_COPY(src, dest) copy_file(src, dest)
+#define LOAD_COPY(src, dest) copy_file(src, dest)
+#endif
+
 static int GameMap2Slot(DB_FILE* stream)
 {
     if (partyMemberPrepSave() == -1) {
@@ -2368,7 +2387,7 @@ static int GameMap2Slot(DB_FILE* stream)
 
         snprintf(str0, sizeof(str0), "%s\\%s", "MAPS", string);
         snprintf(str1, sizeof(str1), "%s\\%s%.2d\\%s", "SAVEGAME", "SLOT", slot_cursor + 1, string);
-        if (copy_file(str0, str1) == -1) {
+        if (SAVE_COPY(str0, str1) == -1) {
             db_free_file_list(&fileNameList, NULL);
             return -1;
         }
@@ -2380,7 +2399,7 @@ static int GameMap2Slot(DB_FILE* stream)
     snprintf(str1, sizeof(str1), "%s\\%s%.2d\\%s", "SAVEGAME", "SLOT", slot_cursor + 1, str0);
     snprintf(str0, sizeof(str0), "%s\\%s", "MAPS", "AUTOMAP.DB");
 
-    if (copy_file(str0, str1) == -1) {
+    if (SAVE_COPY(str0, str1) == -1) {
         return -1;
     }
 
@@ -2438,7 +2457,7 @@ static int SlotMap2Game(DB_FILE* stream)
         snprintf(str0, sizeof(str0), "%s\\%s%.2d\\%s", "SAVEGAME", "SLOT", slot_cursor + 1, fileName);
         snprintf(str1, sizeof(str1), "%s\\%s", "MAPS", fileName);
 
-        if (copy_file(str0, str1) == -1) {
+        if (LOAD_COPY(str0, str1) == -1) {
             debug_printf("LOADSAVE: returning 7\n");
             return -1;
         }
@@ -2447,7 +2466,7 @@ static int SlotMap2Game(DB_FILE* stream)
     const char* automapFileName = strmfe(str1, "AUTOMAP.DB", "SAV");
     snprintf(str0, sizeof(str0), "%s\\%s%.2d\\%s", "SAVEGAME", "SLOT", slot_cursor + 1, automapFileName);
     snprintf(str1, sizeof(str1), "%s\\%s", "MAPS", "AUTOMAP.DB");
-    if (copy_file(str0, str1) == -1) {
+    if (LOAD_COPY(str0, str1) == -1) {
         return -1;
     }
 
@@ -2579,6 +2598,99 @@ out:
     return result;
 }
 
+#ifdef __PS2__
+#define PACKED_MAGIC "PS2Z"
+
+// Reads a whole file through the db layer (so loose/patched files work).
+static unsigned char* read_whole_file(const char* path, int* lengthPtr)
+{
+    DB_FILE* stream = db_fopen(path, "rb");
+    if (stream == NULL) {
+        return NULL;
+    }
+    int length = db_filelength(stream);
+    unsigned char* data = length >= 0 ? (unsigned char*)malloc(length > 0 ? length : 1) : NULL;
+    if (data != NULL && length > 0 && db_fread(data, length, 1, stream) != 1) {
+        free(data);
+        data = NULL;
+    }
+    db_fclose(stream);
+    *lengthPtr = length;
+    return data;
+}
+
+static int write_whole_file(const char* path, const void* data1, int length1, const void* data2, int length2)
+{
+    DB_FILE* stream = db_fopen(path, "wb");
+    if (stream == NULL) {
+        return -1;
+    }
+    int rc = 0;
+    if (length1 > 0 && db_fwrite(data1, length1, 1, stream) != 1) {
+        rc = -1;
+    }
+    if (rc == 0 && length2 > 0 && db_fwrite(data2, length2, 1, stream) != 1) {
+        rc = -1;
+    }
+    db_fclose(stream);
+    return rc;
+}
+
+// pack: src (plain) -> dest as "PS2Z" + original length + zlib data.
+// unpack: src (packed or plain) -> dest plain.
+static int copy_file_packed(const char* src, const char* dest, bool pack)
+{
+    int length;
+    unsigned char* data = read_whole_file(src, &length);
+    if (data == NULL) {
+        // An emptied map state (where files can't be deleted) reads as
+        // missing: keep it emptied in the copy too.
+        size_t len = strlen(src);
+        if (len > 4 && compat_stricmp(src + len - 4, ".SAV") == 0) {
+            return write_whole_file(dest, NULL, 0, NULL, 0);
+        }
+        return -1;
+    }
+
+    int rc = -1;
+    if (pack) {
+        uLongf packedLength = compressBound((uLong)length);
+        unsigned char* packed = (unsigned char*)malloc(8 + packedLength);
+        if (packed != NULL) {
+            memcpy(packed, PACKED_MAGIC, 4);
+            packed[4] = (unsigned char)(length >> 24);
+            packed[5] = (unsigned char)(length >> 16);
+            packed[6] = (unsigned char)(length >> 8);
+            packed[7] = (unsigned char)length;
+            if (compress2(packed + 8, &packedLength, data, (uLong)length, 6) == Z_OK) {
+                rc = write_whole_file(dest, packed, 8 + (int)packedLength, NULL, 0);
+            }
+            free(packed);
+        }
+        if (packed == NULL || rc == -1) {
+            rc = write_whole_file(dest, data, length, NULL, 0); // fall back to a plain copy
+        }
+    } else if (length >= 8 && memcmp(data, PACKED_MAGIC, 4) == 0) {
+        uLongf plainLength = ((uLong)data[4] << 24) | ((uLong)data[5] << 16) | ((uLong)data[6] << 8) | data[7];
+        unsigned char* plain = (unsigned char*)malloc(plainLength > 0 ? plainLength : 1);
+        if (plain != NULL) {
+            uLongf got = plainLength;
+            if (uncompress(plain, &got, data + 8, (uLong)(length - 8)) == Z_OK && got == plainLength) {
+                rc = write_whole_file(dest, plain, (int)plainLength, NULL, 0);
+            } else {
+                debug_printf("LOADSAVE: damaged compressed file %s\n", src);
+            }
+            free(plain);
+        }
+    } else {
+        rc = write_whole_file(dest, data, length, NULL, 0); // saved by an older build
+    }
+
+    free(data);
+    return rc;
+}
+#endif
+
 // 0x471C3C
 void KillOldMaps()
 {
@@ -2589,6 +2701,10 @@ void KillOldMaps()
 // 0x471C68
 int MapDirErase(const char* relativePath, const char* extension)
 {
+    // Can run before InitLoadSave (game start): don't build "(null)\..." paths.
+    if (patches == NULL && !config_get_string(&game_config, GAME_CONFIG_SYSTEM_KEY, GAME_CONFIG_MASTER_PATCHES_KEY, &patches)) {
+        patches = emgpath;
+    }
     char path[COMPAT_MAX_PATH];
     snprintf(path, sizeof(path), "%s*.%s", relativePath, extension);
 
@@ -2613,6 +2729,10 @@ int MapDirErase(const char* relativePath, const char* extension)
 // 0x471CFC
 int MapDirEraseFile(const char* a1, const char* a2)
 {
+    // Can run before InitLoadSave (game start): don't build "(null)\..." paths.
+    if (patches == NULL && !config_get_string(&game_config, GAME_CONFIG_SYSTEM_KEY, GAME_CONFIG_MASTER_PATCHES_KEY, &patches)) {
+        patches = emgpath;
+    }
     char path[COMPAT_MAX_PATH];
 
     snprintf(path, sizeof(path), "%s\\%s%s", patches, a1, a2);

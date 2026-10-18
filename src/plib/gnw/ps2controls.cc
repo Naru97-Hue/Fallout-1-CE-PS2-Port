@@ -13,6 +13,7 @@
 
 #include "plib/gnw/ps2controls.h"
 
+#include <dirent.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -24,6 +25,7 @@
 #include "game/gsound.h"
 #include "game/options.h"
 #include "game/stat.h"
+#include "platform_compat.h"
 #include "plib/color/color.h"
 #include "plib/gnw/button.h"
 #include "plib/gnw/debug.h"
@@ -131,7 +133,40 @@ typedef struct Settings {
     bool invertZoom;
     bool dpadNavigation;
     bool video[PS2_VIDEO_SETTING_COUNT];
+    int saveLocation; // SAVE_LOCATION_*
 } Settings;
+
+enum {
+    SAVE_LOCATION_GAME_FOLDER,
+    SAVE_LOCATION_MC0,
+    SAVE_LOCATION_MC1,
+    SAVE_LOCATION_COUNT,
+};
+
+static const char* kSaveRoots[SAVE_LOCATION_COUNT] = { NULL, "mc0:/FALLOUT", "mc1:/FALLOUT" };
+static const char* kSaveNames[SAVE_LOCATION_COUNT] = { "Game folder (USB / HDD)", "Memory card 1", "Memory card 2" };
+
+static void ps2controls_apply_save_location(int location)
+{
+    if (location < 0 || location >= SAVE_LOCATION_COUNT) {
+        location = SAVE_LOCATION_GAME_FOLDER;
+    }
+    compat_set_save_root(kSaveRoots[location]);
+}
+
+// Is there a memory card in that slot (location 1/2)?
+static bool ps2controls_card_present(int location)
+{
+    if (location == SAVE_LOCATION_GAME_FOLDER) {
+        return true;
+    }
+    DIR* dir = opendir(location == SAVE_LOCATION_MC0 ? "mc0:/" : "mc1:/");
+    if (dir == NULL) {
+        return false;
+    }
+    closedir(dir);
+    return true;
+}
 
 static const char* kVideoKeys[PS2_VIDEO_SETTING_COUNT] = { "gs_map", "gs_cursor", "gs_fades" };
 
@@ -155,6 +190,7 @@ static void ps2controls_defaults(Settings* settings)
     for (int i = 0; i < PS2_VIDEO_SETTING_COUNT; i++) {
         settings->video[i] = true;
     }
+    settings->saveLocation = SAVE_LOCATION_GAME_FOLDER;
     // PADNAV.OFF (older builds) still turns D-pad navigation off by default.
     FILE* stream = fopen("PADNAV.OFF", "rb");
     settings->dpadNavigation = stream == NULL;
@@ -231,36 +267,62 @@ void ps2controls_load()
                     gSettings.video[i] = value != 0;
                 }
             }
+            if (config_get_value(&config, "saves", "location", &value) && value >= 0 && value < SAVE_LOCATION_COUNT) {
+                gSettings.saveLocation = value;
+            }
             debug_printf("ps2controls: loaded %s\n", CONTROLS_FILE);
         }
         config_exit(&config);
     }
 
     ps2controls_rebuild_keymap();
+    ps2controls_apply_save_location(gSettings.saveLocation);
 }
 
+// Only settings that differ from the defaults are written, so the file
+// stays a few lines long (and is empty / removed when nothing changed).
 static void ps2controls_save()
 {
+    Settings def;
+    ps2controls_defaults(&def);
+
     Config config;
     if (!config_init(&config)) {
         return;
     }
+    int changed = 0;
+#define SAVE_IF(cond, section, key, value)                \
+    if (cond) {                                           \
+        config_set_value(&config, section, key, (value)); \
+        changed++;                                        \
+    }
     for (int i = 0; i < PAD_BUTTON_ROWS; i++) {
-        config_set_value(&config, "pad", kPadButtons[i].key, gSettings.pad[i]);
+        SAVE_IF(gSettings.pad[i] != def.pad[i], "pad", kPadButtons[i].key, gSettings.pad[i]);
     }
     for (int i = 0; i < HOTKEY_ROWS; i++) {
-        config_set_value(&config, "keyboard", kHotkeys[i].key, gSettings.hotkey[i]);
+        SAVE_IF(gSettings.hotkey[i] != def.hotkey[i], "keyboard", kHotkeys[i].key, gSettings.hotkey[i]);
     }
-    config_set_value(&config, "mouse", "swap_buttons", gSettings.mouseSwap ? 1 : 0);
-    config_set_value(&config, "mouse", "middle_button", gSettings.mouseMiddle);
-    config_set_value(&config, "stick", "cursor_speed", gSettings.cursorSpeed);
-    config_set_value(&config, "stick", "dead_zone", gSettings.deadZone);
-    config_set_value(&config, "stick", "invert_zoom", gSettings.invertZoom ? 1 : 0);
-    config_set_value(&config, "stick", "dpad_navigation", gSettings.dpadNavigation ? 1 : 0);
+    SAVE_IF(gSettings.mouseSwap != def.mouseSwap, "mouse", "swap_buttons", gSettings.mouseSwap ? 1 : 0);
+    SAVE_IF(gSettings.mouseMiddle != def.mouseMiddle, "mouse", "middle_button", gSettings.mouseMiddle);
+    SAVE_IF(gSettings.cursorSpeed != def.cursorSpeed, "stick", "cursor_speed", gSettings.cursorSpeed);
+    SAVE_IF(gSettings.deadZone != def.deadZone, "stick", "dead_zone", gSettings.deadZone);
+    SAVE_IF(gSettings.invertZoom != def.invertZoom, "stick", "invert_zoom", gSettings.invertZoom ? 1 : 0);
+    SAVE_IF(gSettings.dpadNavigation != def.dpadNavigation, "stick", "dpad_navigation", gSettings.dpadNavigation ? 1 : 0);
     for (int i = 0; i < PS2_VIDEO_SETTING_COUNT; i++) {
-        config_set_value(&config, "video", kVideoKeys[i], gSettings.video[i] ? 1 : 0);
+        SAVE_IF(gSettings.video[i] != def.video[i], "video", kVideoKeys[i], gSettings.video[i] ? 1 : 0);
     }
-    if (!config_save(&config, CONTROLS_FILE, false)) {
+    SAVE_IF(gSettings.saveLocation != def.saveLocation, "saves", "location", gSettings.saveLocation);
+#undef SAVE_IF
+
+    if (changed == 0) {
+        // All defaults: no file needed (an empty one if it can't be removed).
+        if (compat_remove(CONTROLS_FILE) != 0) {
+            FILE* stream = fopen(CONTROLS_FILE, "wb");
+            if (stream != NULL) {
+                fclose(stream);
+            }
+        }
+    } else if (!config_save(&config, CONTROLS_FILE, false)) {
         debug_printf("ps2controls: couldn't write %s\n", CONTROLS_FILE);
     }
     config_exit(&config);
@@ -368,7 +430,7 @@ enum {
     TAB_COUNT,
 };
 
-static const char* kTabNames[TAB_COUNT] = { "CONTROLS", "GAMEPAD", "KEYBOARD", "VIDEO" };
+static const char* kTabNames[TAB_COUNT] = { "CONTROLS", "GAMEPAD", "KEYBOARD", "SYSTEM" };
 
 enum {
     ROW_PAD,
@@ -381,6 +443,7 @@ enum {
     ROW_DPAD_NAV,
     ROW_TV_MODE,
     ROW_VIDEO_SETTING,
+    ROW_SAVE_LOCATION,
 };
 
 typedef struct Row {
@@ -510,6 +573,11 @@ static void ps2controls_row_text(int rowIndex, char* label, char* value, size_t 
         snprintf(label, size, "%s", kVideoNames[row->index]);
         snprintf(value, size, "%s", gSettings.video[row->index] ? "On" : "Off (EE draws it)");
         break;
+    case ROW_SAVE_LOCATION:
+        snprintf(label, size, "Save / load games on");
+        snprintf(value, size, "%s%s", kSaveNames[gSettings.saveLocation],
+            ps2controls_card_present(gSettings.saveLocation) ? "" : " (no card!)");
+        break;
     }
 }
 
@@ -612,6 +680,10 @@ static void ps2controls_change(int rowIndex, int step)
         break;
     case ROW_VIDEO_SETTING:
         gSettings.video[row->index] = !gSettings.video[row->index];
+        break;
+    case ROW_SAVE_LOCATION:
+        gSettings.saveLocation = (gSettings.saveLocation + step + SAVE_LOCATION_COUNT) % SAVE_LOCATION_COUNT;
+        ps2controls_apply_save_location(gSettings.saveLocation);
         break;
     }
 }
@@ -960,11 +1032,13 @@ static void ps2controls_draw()
         ps2controls_draw_keyboard();
     } else if (gTab == TAB_VIDEO) {
         ps2controls_text("DISPLAY", 30, CONTENT_TOP, gYellow);
-        ps2controls_text("A new TV output must be confirmed within 6 seconds, or it switches", 30, CONTENT_TOP + 110, gDim);
-        ps2controls_text("back by itself (480p, 720p and 1080i need component cables on a", 30, CONTENT_TOP + 124, gDim);
-        ps2controls_text("real PS2; if your TV shows nothing, just wait).", 30, CONTENT_TOP + 138, gDim);
-        ps2controls_text("The GS options take effect the next time the game starts.", 30, CONTENT_TOP + 160, gDim);
-        ps2controls_draw_vault_boy(250, CONTENT_TOP + 180);
+        ps2controls_text("A new TV output must be confirmed within", 30, CONTENT_TOP + 96, gDim);
+        ps2controls_text("6 seconds or it switches back by itself.", 30, CONTENT_TOP + 110, gDim);
+        ps2controls_text("GS options apply after restarting the game.", 30, CONTENT_TOP + 128, gDim);
+        ps2controls_text("SAVE GAMES", 30, CONTENT_TOP + 183, gYellow);
+        ps2controls_text("Used by both the save and the load screen. Memory card saves go", 30, CONTENT_TOP + 226, gDim);
+        ps2controls_text("in a FALLOUT folder; each save is a few hundred KB.", 30, CONTENT_TOP + 240, gDim);
+        ps2controls_draw_vault_boy(480, CONTENT_TOP + 4);
     }
 
     for (int i = 0; i < gRowCount; i++) {
@@ -1086,6 +1160,7 @@ static bool ps2controls_open_window()
             y += ROW_HEIGHT;
             ps2controls_add_row(ROW_VIDEO_SETTING, i, 30, y, 420);
         }
+        ps2controls_add_row(ROW_SAVE_LOCATION, 0, 30, CONTENT_TOP + 200, 560);
     }
 
     if (gFromMainMenu) {
@@ -1159,10 +1234,13 @@ void ps2controls_screen(bool fromMainMenu)
         } else if (input == EVENT_DEFAULTS) {
             bool video[PS2_VIDEO_SETTING_COUNT];
             memcpy(video, gSettings.video, sizeof(video));
+            int location = gSettings.saveLocation;
             ps2controls_defaults(&gSettings);
             if (gTab != TAB_VIDEO) {
                 memcpy(gSettings.video, video, sizeof(video)); // only reset what's on screen
+                gSettings.saveLocation = location;
             }
+            ps2controls_apply_save_location(gSettings.saveLocation);
             ps2controls_draw();
         } else if (input == EVENT_PREFS && gFromMainMenu) {
             ps2controls_close_window();
@@ -1213,6 +1291,7 @@ void ps2controls_screen(bool fromMainMenu)
         ps2controls_save();
     } else {
         gSettings = saved;
+        ps2controls_apply_save_location(gSettings.saveLocation);
         ps2video_set_mode(gTvMode); // undo a TV mode kept on this visit
     }
 }

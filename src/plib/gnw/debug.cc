@@ -352,6 +352,17 @@ void debug_flush()
     }
 }
 
+// How much of the PS2's 32 MB is still available to malloc.
+long ps2_free_memory()
+{
+    struct mallinfo info = mallinfo();
+    long untouched = (long)(0x02000000 - 0x20000) - (long)(unsigned long)(char*)sbrk(0);
+    if (untouched < 0) {
+        untouched = 0;
+    }
+    return untouched + (long)info.fordblks;
+}
+
 // Logs how much of the PS2's 32 MB is still available to malloc.
 void ps2_log_memory(const char* tag)
 {

@@ -247,12 +247,53 @@ unsigned int compat_timeGetTime()
 #endif
 }
 
+#ifdef __PS2__
+static bool compat_is_sav(const char* path)
+{
+    size_t len = strlen(path);
+    return len > 4 && compat_stricmp(path + len - 4, ".SAV") == 0;
+}
+#endif
+
+#ifdef __PS2__
+// Is this file on PCSX2's host: device (relative paths: is the game there)?
+static bool compat_is_host_path(const char* nativePath)
+{
+    static int onHost = -1;
+    if (onHost == -1) {
+        char cwd[64];
+        onHost = getcwd(cwd, sizeof(cwd)) != NULL && compat_strnicmp(cwd, "host", 4) == 0;
+    }
+    if (strchr(nativePath, ':') == NULL) {
+        return onHost == 1;
+    }
+    return compat_strnicmp(nativePath, "host", 4) == 0;
+}
+#endif
+
 FILE* compat_fopen(const char* path, const char* mode)
 {
     char nativePath[COMPAT_MAX_PATH];
     strcpy(nativePath, path);
     compat_windows_path_to_native(nativePath);
     compat_resolve_path(nativePath);
+#ifdef __PS2__
+    // An empty .SAV is a map state "deleted" where removing files isn't
+    // possible (see compat_remove): treat it as missing.
+    if (mode[0] == 'r' && compat_is_sav(nativePath)) {
+        FILE* stream = fopen(nativePath, mode);
+        if (stream != NULL) {
+            fseek(stream, 0, SEEK_END);
+            long size = ftell(stream);
+            if (size <= 0) {
+                fclose(stream);
+                return NULL;
+            }
+            fseek(stream, 0, SEEK_SET);
+        }
+        return stream;
+    }
+#endif
     return fopen(nativePath, mode);
 }
 
@@ -262,7 +303,27 @@ int compat_remove(const char* path)
     strcpy(nativePath, path);
     compat_windows_path_to_native(nativePath);
     compat_resolve_path(nativePath);
+#ifdef __PS2__
+    // PCSX2's host: device can't delete at all (every attempt just logs
+    // "IOPHLE remove_HLE failed"), so don't try there.
+    bool hostPath = compat_is_host_path(nativePath);
+    if (!hostPath && remove(nativePath) == 0) {
+        return 0;
+    }
+    // PCSX2's host: device can't delete files. Map states (.SAV) must really
+    // go away (or an old one comes back on loading), so empty the file
+    // instead; compat_fopen treats empty .SAV files as missing.
+    if (compat_is_sav(nativePath)) {
+        FILE* stream = fopen(nativePath, "wb");
+        if (stream != NULL) {
+            fclose(stream);
+            return 0;
+        }
+    }
+    return -1;
+#else
     return remove(nativePath);
+#endif
 }
 
 int compat_rename(const char* oldFileName, const char* newFileName)
@@ -287,7 +348,9 @@ int compat_rename(const char* oldFileName, const char* newFileName)
     if (in == NULL) {
         return -1;
     }
-    remove(nativeNewFileName);
+    if (!compat_is_host_path(nativeNewFileName)) {
+        remove(nativeNewFileName);
+    }
     FILE* out = fopen(nativeNewFileName, "wb");
     if (out == NULL) {
         fclose(in);
@@ -310,10 +373,11 @@ int compat_rename(const char* oldFileName, const char* newFileName)
         ok = false;
     }
     if (!ok) {
-        remove(nativeNewFileName);
         return -1;
     }
-    remove(nativeOldFileName);
+    if (!compat_is_host_path(nativeOldFileName)) {
+        remove(nativeOldFileName);
+    }
     return 0;
 #else
     return rename(nativeOldFileName, nativeNewFileName);
@@ -333,8 +397,50 @@ void compat_windows_path_to_native(char* path)
 #endif
 }
 
+#ifdef __PS2__
+// Where SAVEGAME lives (NULL: inside the game's data folder). For a memory
+// card this is e.g. "mc0:/FALLOUT"; ".../SAVEGAME/..." paths are moved there.
+static char gSaveRoot[32] = { 0 };
+
+void compat_set_save_root(const char* root)
+{
+    if (root == NULL || root[0] == '\0') {
+        gSaveRoot[0] = '\0';
+        return;
+    }
+    snprintf(gSaveRoot, sizeof(gSaveRoot), "%s", root);
+    mkdir(gSaveRoot, 0755); // the card's FALLOUT folder (fails harmlessly if present)
+}
+
+const char* compat_get_save_root()
+{
+    return gSaveRoot[0] != '\0' ? gSaveRoot : NULL;
+}
+
+static void compat_redirect_save_path(char* path)
+{
+    if (gSaveRoot[0] == '\0') {
+        return;
+    }
+    // Find a "savegame" path component (any case).
+    char* p = path;
+    while (*p != '\0') {
+        if ((p == path || p[-1] == '/') && compat_strnicmp(p, "savegame", 8) == 0 && (p[8] == '/' || p[8] == '\0')) {
+            char rest[COMPAT_MAX_PATH];
+            snprintf(rest, sizeof(rest), "%s", p + 8);
+            snprintf(path, COMPAT_MAX_PATH, "%s/SAVEGAME%s", gSaveRoot, rest);
+            return;
+        }
+        p++;
+    }
+}
+#endif
+
 void compat_resolve_path(char* path)
 {
+#ifdef __PS2__
+    compat_redirect_save_path(path);
+#endif
 #if !defined(_WIN32) && !defined(__PS2__)
     // (PS2: host:, FAT and ISO9660 are all case-insensitive, and scanning the
     // directory over host:/USB on every fopen is slow, so this is skipped.)

@@ -1,5 +1,6 @@
 #include "game/art.h"
 
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -95,6 +96,11 @@ int art_init()
     // don't fail later (an 8 MB cache ran the heap dry at the main menu).
     if (cacheSize > 3) {
         cacheSize = 3;
+    }
+    // Plenty of memory left at this point (it depends on what's loaded)? A
+    // 4 MB cache keeps more of a town's art in memory between scrolls.
+    if (ps2_free_memory() > 14L * 1024 * 1024) {
+        cacheSize = 4;
     }
     debug_printf("art cache: %d MB\n", cacheSize);
 #endif

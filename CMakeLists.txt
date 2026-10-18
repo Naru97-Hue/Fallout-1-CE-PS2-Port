@@ -370,7 +370,7 @@ endif()
 
 if(PS2)
     find_package(SDL2 REQUIRED CONFIG)
-    set(SDL2_LIBRARIES SDL2::SDL2main SDL2::SDL2-static mpeg dma eedebug)
+    set(SDL2_LIBRARIES SDL2::SDL2main SDL2::SDL2-static mpeg dma eedebug z)
     target_compile_definitions(${EXECUTABLE_NAME} PUBLIC _EE PS2 __PS2__)
     # Don't halt the console on an integer divide by zero (MIPS GCC inserts a
     # trap before every division by default).

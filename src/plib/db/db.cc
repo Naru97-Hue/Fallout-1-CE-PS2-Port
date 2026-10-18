@@ -603,6 +603,14 @@ DB_FILE* db_fopen(const char* filename, const char* mode)
 
         if (v2) {
             stream = compat_fopen(path, mode);
+#ifdef __PS2__
+            if (stream != NULL) {
+                // Fewer IOP round trips: map saves are written 4 bytes at a
+                // time, which with the default buffer meant thousands of
+                // tiny writes to the USB stick / memory card / host.
+                setvbuf(stream, NULL, _IOFBF, mode[0] == 'r' ? 16 * 1024 : 32 * 1024);
+            }
+#endif
         }
 
         if (stream != NULL) {
@@ -1948,6 +1956,12 @@ static int db_init_database(DB_DATABASE* database, const char* datafile, const c
         database->datafile = NULL;
         return -1;
     }
+#ifdef __PS2__
+    // Every read from a USB stick / PCSX2's host: is a round trip to the
+    // IOP; the default 1 KB buffer turned art loading into thousands of tiny
+    // requests (slow map loads and scrolling). Read 64 KB at a time.
+    setvbuf(database->stream, NULL, _IOFBF, 64 * 1024);
+#endif
 
     if (assoc_init(&(database->root), 0, sizeof(*database->entries), NULL) != 0) {
         fclose(database->stream);

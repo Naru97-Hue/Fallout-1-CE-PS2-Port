@@ -40,6 +40,11 @@ int compat_remove(const char* path);
 int compat_rename(const char* oldFileName, const char* newFileName);
 void compat_windows_path_to_native(char* path);
 void compat_resolve_path(char* path);
+#ifdef __PS2__
+// Save games on another device (e.g. "mc0:/FALLOUT"); NULL = game folder.
+void compat_set_save_root(const char* root);
+const char* compat_get_save_root();
+#endif
 char* compat_strdup(const char* string);
 long getFileSize(FILE* stream);
 
