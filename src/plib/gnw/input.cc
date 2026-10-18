@@ -11,6 +11,7 @@
 #ifdef __PS2__
 #include "plib/gnw/ps2crash.h"
 #include "plib/gnw/ps2osk.h"
+#include "plib/gnw/ps2hid.h"
 #include "plib/gnw/ps2pad.h"
 #endif
 #include "plib/gnw/gnw.h"
@@ -1109,6 +1110,10 @@ void GNW95_process_message()
 
     KeyboardData keyboardData;
     SDL_Event e;
+#ifdef __PS2__
+    ps2pad_check_connection(GNW95_ps2pad_key);
+    ps2hid_poll_keyboard(GNW95_ps2pad_key);
+#endif
     while (SDL_PollEvent(&e)) {
 #ifdef __PS2__
         if (ps2pad_handle_event(&e, GNW95_ps2pad_key)) {

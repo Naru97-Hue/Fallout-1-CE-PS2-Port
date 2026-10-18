@@ -18,6 +18,10 @@
 #include "plib/gnw/svga.h"
 #include "plib/gnw/text.h"
 
+#ifdef __PS2__
+#include "plib/gnw/ps2controls.h"
+#endif
+
 namespace fallout {
 
 #define MAIN_MENU_WINDOW_WIDTH 640
@@ -29,6 +33,10 @@ typedef enum MainMenuButton {
     MAIN_MENU_BUTTON_LOAD_GAME,
     MAIN_MENU_BUTTON_CREDITS,
     MAIN_MENU_BUTTON_EXIT,
+#ifdef __PS2__
+    // The empty sixth slot in the menu art.
+    MAIN_MENU_BUTTON_OPTIONS,
+#endif
     MAIN_MENU_BUTTON_COUNT,
 } MainMenuButton;
 
@@ -66,6 +74,9 @@ static int button_values[MAIN_MENU_BUTTON_COUNT] = {
     KEY_LOWERCASE_L,
     KEY_LOWERCASE_C,
     KEY_LOWERCASE_E,
+#ifdef __PS2__
+    KEY_LOWERCASE_O,
+#endif
 };
 
 // 0x505AB8
@@ -75,6 +86,9 @@ static int return_values[MAIN_MENU_BUTTON_COUNT] = {
     MAIN_MENU_LOAD_GAME,
     MAIN_MENU_CREDITS,
     MAIN_MENU_EXIT,
+#ifdef __PS2__
+    MAIN_MENU_OPTIONS,
+#endif
 };
 
 // 0x612DC8
@@ -196,6 +210,18 @@ int main_menu_create()
 
     for (int index = 0; index < MAIN_MENU_BUTTON_COUNT; index++) {
         msg.num = 9 + index;
+#ifdef __PS2__
+        if (index == MAIN_MENU_BUTTON_OPTIONS) {
+            const char* text = "OPTIONS";
+            len = text_width(text);
+            text_to_buf(main_window_buf + MAIN_MENU_WINDOW_WIDTH * (42 * index - index + 46) + 520 - (len / 2),
+                text,
+                MAIN_MENU_WINDOW_WIDTH - (520 - (len / 2)) - 1,
+                MAIN_MENU_WINDOW_WIDTH,
+                colorTable[21091]);
+            continue;
+        }
+#endif
         if (message_search(&misc_message_file, &msg)) {
             len = text_width(msg.text);
             text_to_buf(main_window_buf + MAIN_MENU_WINDOW_WIDTH * (42 * index - index + 46) + 520 - (len / 2),
@@ -339,6 +365,16 @@ int main_menu_loop()
                 main_menu_play_sound("nmselec1");
 
                 rc = return_values[buttonIndex];
+#ifdef __PS2__
+                if (rc == MAIN_MENU_OPTIONS) {
+                    // Settings (controls, video, game preferences) right here.
+                    ps2controls_screen(true);
+                    win_draw(main_window);
+                    tick = get_time();
+                    rc = -1;
+                    break;
+                }
+#endif
 
                 if (buttonIndex == MAIN_MENU_BUTTON_CREDITS && (keys[SDL_SCANCODE_RSHIFT] != KEY_STATE_UP || keys[SDL_SCANCODE_LSHIFT] != KEY_STATE_UP)) {
                     rc = MAIN_MENU_QUOTES;

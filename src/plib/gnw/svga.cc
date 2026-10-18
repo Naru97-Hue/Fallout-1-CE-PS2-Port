@@ -337,6 +337,7 @@ void renderPresent()
 {
 #ifdef __PS2__
     ps2crash_heartbeat();
+    ps2video_trial_poll();
     if (ps2gs_present(gSdlRenderer, gSdlSurface, screenGetWidth(), screenGetHeight())) {
         gPs2Direct = true;
         if (ps2osk_is_visible()) {

@@ -20,6 +20,9 @@ bool ps2pad_handle_event(SDL_Event* event, Ps2PadKeyCallback* emitKey);
 // buttons (Cross = left, Circle = right).
 void ps2pad_get_mouse(int* dx, int* dy, bool* left, bool* right);
 
+// Releases everything the pad was holding if it got unplugged (hot swap).
+void ps2pad_check_connection(Ps2PadKeyCallback* emitKey);
+
 // Mouse-wheel notches from the right stick since the last call (+1 up, -1 down).
 int ps2pad_get_wheel();
 

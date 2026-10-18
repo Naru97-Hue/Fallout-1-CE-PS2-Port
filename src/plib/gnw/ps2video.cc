@@ -95,10 +95,10 @@ void ps2video_framebuffer_size(int* width, int* height)
     }
 }
 
-void ps2video_cycle()
+// Switches the TV output to mode (not saved).
+static void ps2video_apply(int mode, bool announce)
 {
-    gMode = (gMode + 1) % PS2_VIDEO_MODE_COUNT;
-    ps2video_save();
+    gMode = mode;
 
     int width;
     int height;
@@ -111,10 +111,108 @@ void ps2video_cycle()
     SDL_FlushEvent(SDL_WINDOWEVENT);
     win_refresh_all(&scr_size);
 
-    char message[48];
-    snprintf(message, sizeof(message), "VIDEO: %s", kNames[gMode]);
-    ps2osk_show_message(message, 2000);
+    if (announce) {
+        char message[48];
+        snprintf(message, sizeof(message), "VIDEO: %s", kNames[gMode]);
+        ps2osk_show_message(message, 2000);
+    }
     renderPresent();
+}
+
+// --- Trial: a new mode must be confirmed within 6 seconds or it's undone ---
+// (a TV that can't show the mode stays black, so nobody could switch back).
+
+#define TRIAL_MS 6000
+
+static int gTrialOld = -1;
+static Uint32 gTrialEnd = 0;
+static bool gTrialQuiet = false; // a dialog shows the countdown itself
+static int gTrialShownSeconds = -1;
+
+void ps2video_start_trial(int mode, bool quiet)
+{
+    if (mode < 0 || mode >= PS2_VIDEO_MODE_COUNT || mode == gMode) {
+        return;
+    }
+    int old = gTrialOld != -1 ? gTrialOld : gMode;
+    gTrialQuiet = quiet;
+    gTrialShownSeconds = -1;
+    ps2video_apply(mode, false);
+    gTrialOld = old;
+    gTrialEnd = SDL_GetTicks() + TRIAL_MS;
+}
+
+bool ps2video_trial_quiet()
+{
+    return gTrialQuiet;
+}
+
+bool ps2video_trial_active()
+{
+    return gTrialOld != -1;
+}
+
+int ps2video_trial_seconds_left()
+{
+    if (gTrialOld == -1) {
+        return 0;
+    }
+    Sint32 left = (Sint32)(gTrialEnd - SDL_GetTicks());
+    return left > 0 ? (left + 999) / 1000 : 0;
+}
+
+void ps2video_trial_answer(bool keep)
+{
+    if (gTrialOld == -1) {
+        return;
+    }
+    int old = gTrialOld;
+    gTrialOld = -1;
+    if (keep) {
+        ps2video_save();
+        debug_printf("ps2video: kept %s\n", kNames[gMode]);
+        if (!gTrialQuiet) {
+            char message[48];
+            snprintf(message, sizeof(message), "VIDEO: %s kept", kNames[gMode]);
+            ps2osk_show_message(message, 1500);
+        }
+    } else {
+        debug_printf("ps2video: back to %s\n", kNames[old]);
+        ps2video_apply(old, !gTrialQuiet);
+    }
+}
+
+void ps2video_trial_poll()
+{
+    if (gTrialOld == -1) {
+        return;
+    }
+    int seconds = ps2video_trial_seconds_left();
+    if (seconds <= 0) {
+        ps2video_trial_answer(false);
+        return;
+    }
+    if (!gTrialQuiet && seconds != gTrialShownSeconds) {
+        gTrialShownSeconds = seconds;
+        char message[64];
+        snprintf(message, sizeof(message), "KEEP %s?  X = YES  O = NO  (%d)", kNames[gMode], seconds);
+        ps2osk_show_message(message, 1100);
+    }
+}
+
+void ps2video_set_mode(int mode)
+{
+    if (mode < 0 || mode >= PS2_VIDEO_MODE_COUNT || mode == gMode) {
+        return;
+    }
+    ps2video_apply(mode, true);
+    ps2video_save();
+}
+
+void ps2video_cycle()
+{
+    // Hotkey (L1 + R1 + Select): next mode, confirmed with X / O on the pad.
+    ps2video_start_trial((gMode + 1) % PS2_VIDEO_MODE_COUNT, false);
 }
 
 } // namespace fallout

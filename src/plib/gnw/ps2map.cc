@@ -27,6 +27,7 @@
 #ifdef __PS2__
 
 #include "plib/gnw/ps2map.h"
+#include "plib/gnw/ps2controls.h"
 
 #include <malloc.h>
 #include <stdio.h>
@@ -215,6 +216,12 @@ static void ps2map_check_config()
         return;
     }
     gConfigChecked = true;
+
+    if (!ps2controls_video_setting(PS2_VIDEO_SETTING_GS_MAP)) {
+        gEnabled = false;
+        debug_printf("ps2map: GS map drawing turned off in Options > Settings > Video\n");
+        return;
+    }
 
     const char* names[] = { "GSFLOOR.OFF", "GSMAP.OFF" };
     for (int i = 0; i < 2; i++) {
@@ -927,6 +934,34 @@ void ps2map_emit_trans(int fid, int frame, int rotation, const unsigned char* fr
 {
     ps2map_emit_atlas(REC_TRANS, fid, frame, rotation, frameData, frameWidth, frameHeight, src, width, height, destX, destY,
         kind, ps2map_level(light));
+}
+
+bool ps2map_emit_cached_lit_tile(int fid, const int* intensity, int width, int height, int destX, int destY)
+{
+    if (gEmitGs == NULL) {
+        return false;
+    }
+    int index = ps2map_find_entry(KEY_LIT_TILE, fid, 0, intensity);
+    if (index == -1) {
+        return false;
+    }
+    gShelves[gEntries[index].shelf].lastUsed = gBuildNo;
+    gLitBytesThisBuild += ((width + 15) & ~15) * height;
+
+    Record* r = ps2map_new_record();
+    if (r == NULL) {
+        return true;
+    }
+    r->type = REC_SPRITE;
+    r->clut = PS2MAP_CLUT_BASE;
+    r->level = 0;
+    r->x = (short)destX;
+    r->y = (short)destY;
+    r->width = (short)width;
+    r->height = (short)height;
+    r->u = gEntries[index].x;
+    r->v = gEntries[index].y;
+    return true;
 }
 
 void ps2map_emit_lit_tile(int fid, const int* intensity, const unsigned char* lit, const unsigned char* base, int width, int height, int destX, int destY)

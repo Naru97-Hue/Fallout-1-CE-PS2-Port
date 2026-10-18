@@ -40,6 +40,7 @@
 #include "plib/gnw/debug.h"
 #include "plib/gnw/gnw.h"
 #include "plib/gnw/mouse.h"
+#include "plib/gnw/ps2controls.h"
 #include "plib/gnw/ps2map.h"
 #include "plib/gnw/ps2zoom.h"
 
@@ -110,6 +111,8 @@ static void ps2gs_check_config()
         return;
     }
     gConfigChecked = true;
+    gGsFades = ps2controls_video_setting(PS2_VIDEO_SETTING_GS_FADES);
+    gGsCursor = ps2controls_video_setting(PS2_VIDEO_SETTING_GS_CURSOR);
     if (ps2gs_file_exists("GSFADE.OFF")) {
         gGsFades = false;
         debug_printf("ps2gs: GS fades disabled by GSFADE.OFF\n");

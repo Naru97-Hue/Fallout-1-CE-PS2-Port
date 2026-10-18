@@ -1029,6 +1029,24 @@ int win_visible_rects(int win, Rect* rects, int maxRects)
 #endif
 
 #ifdef __PS2__
+int win_list_visible(int* ids, int maxIds)
+{
+    // Top-most first; stops below the top-most modal window (nothing under
+    // it can be clicked).
+    int count = 0;
+    for (int index = num_windows - 1; index >= 0 && count < maxIds; index--) {
+        Window* w = window[index];
+        if ((w->flags & WINDOW_HIDDEN) != 0) {
+            continue;
+        }
+        ids[count++] = w->id;
+        if ((w->flags & WINDOW_MODAL) != 0) {
+            break;
+        }
+    }
+    return count;
+}
+
 int win_top_visible(int x, int y)
 {
     for (int index = num_windows - 1; index >= 0; index--) {

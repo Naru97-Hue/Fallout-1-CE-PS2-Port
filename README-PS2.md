@@ -91,17 +91,52 @@ Start ............. Esc (options / cancel)
 Select ............ Automap (Tab)
 L3 ................ Switch active hand (B)
 R3 ................ Open / close on-screen keyboard
-D-pad ............. Scroll the map
+D-pad ............. Jump the cursor to the next button, person, item, door
+                    or ladder in that direction (console-style); move the
+                    cursor to a screen edge to scroll the map
 Right stick up/down  Zoom in/out on the map (1x-2x, view follows the cursor);
                      mouse wheel in menus, inventory, dialogue and Pip-Boy
 
 TV OUTPUT (hold L1 + R1, press Select)
 -------------------------------------
-Cycles 480i -> 480p -> 720p -> 1080i. The choice is saved in PS2VIDEO.CFG
-and used on the next boot. The game still renders 640x480; the PS2's GS
+Cycles 480i -> 480p -> 720p -> 1080i. Press X within 6 seconds to keep the
+new mode (saved in PS2VIDEO.CFG), O or waiting switches back. The game still renders 640x480; the PS2's GS
 scales it to the chosen mode. 720p/1080i use 16-bit colour to fit in VRAM.
 480p/720p/1080i need component cables (YPbPr) on real hardware. If your TV
 shows nothing, wait or delete PS2VIDEO.CFG to return to 480i.
+
+
+USB KEYBOARD AND MOUSE
+----------------------
+Plug a USB keyboard and/or mouse into the PS2 (in PCSX2: Settings >
+Controllers > USB Port 1/2 > HID Keyboard / HID Mouse). They work alongside
+the DualShock: all the PC hotkeys, typing save names, and pointing/clicking
+with the mouse (wheel scrolls lists). No setup needed.
+
+Everything is hot-swappable: plug or unplug the DualShock, keyboard or mouse
+at any time, even mid-game. A re-plugged DualShock is switched back to analog
+mode automatically, and buttons held when a device is pulled are released.
+
+SETTINGS (controls, layouts, video)
+-----------------------------------
+Open it from the main menu (OPTIONS) or in game from the Options menu
+(Start > SETTINGS). Tabs:
+  CONTROLS  remap any DualShock button (except the D-pad), rebind the
+            keyboard hotkeys, swap the mouse buttons or give the middle
+            button an action, cursor speed, stick dead zone, zoom direction
+            and what the D-pad does (jump to targets / arrow keys)
+  GAMEPAD   picture of the DualShock showing what every button does now
+  KEYBOARD  picture of a keyboard with the game's hotkeys marked
+  VIDEO     TV output (480i/480p/720p/1080i) and the GS renderer
+            switches (map, mouse cursor, fades; after restart). A new TV
+            output must be confirmed (YES) within 6 seconds, otherwise it
+            switches back by itself - so a TV that can't show it is safe.
+From the main menu there is also GAME PREFS (the game's own preferences).
+Click or press Cross on a line to change it, right-click or Circle to step
+back; for a keyboard hotkey, click it and press the new key. D-pad moves
+between lines and tabs. DONE saves to CONTROLS.CFG next to FALLOUT.ELF,
+DEFAULTS resets the current tab, CANCEL discards changes.
+Note: rebinding a letter key also changes what that key types.
 
 
 ON-SCREEN KEYBOARD (press R3)

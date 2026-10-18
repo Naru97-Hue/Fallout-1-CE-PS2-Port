@@ -1,6 +1,8 @@
 #include "plib/gnw/dxinput.h"
 
 #ifdef __PS2__
+#include "plib/gnw/ps2controls.h"
+#include "plib/gnw/ps2hid.h"
 #include "plib/gnw/ps2pad.h"
 #include "plib/gnw/ps2zoom.h"
 #include "plib/gnw/svga.h"
@@ -83,11 +85,22 @@ bool dxinput_get_mouse_state(MouseData* mouseState)
     mouseState->y += padDy;
     mouseState->buttons[0] |= padLeft ? 1 : 0;
     mouseState->buttons[1] |= padRight ? 1 : 0;
+    int hidDx;
+    int hidDy;
+    bool hidLeft;
+    bool hidRight;
+    int hidWheel;
+    ps2hid_get_mouse(&hidDx, &hidDy, &hidLeft, &hidRight, &hidWheel);
+    mouseState->x += hidDx;
+    mouseState->y += hidDy;
+    mouseState->buttons[0] |= hidLeft ? 1 : 0;
+    mouseState->buttons[1] |= hidRight ? 1 : 0;
+    gMouseWheelDeltaY += hidWheel;
     int padWheel = ps2pad_get_wheel();
     if (padWheel != 0) {
         // On the map the right stick zooms; elsewhere it's the mouse wheel.
         if (ps2zoom_available()) {
-            if (ps2zoom_step(padWheel)) {
+            if (ps2zoom_step(ps2controls_zoom_inverted() ? -padWheel : padWheel)) {
                 renderPresent();
             }
         } else {
@@ -134,8 +147,9 @@ bool dxinput_read_keyboard_buffer(KeyboardData* keyboardData)
 bool dxinput_mouse_init()
 {
 #ifdef __PS2__
-    // No pointer device on PS2; the cursor is driven by the DualShock.
+    // The cursor is driven by the DualShock and/or a USB mouse.
     ps2pad_init();
+    ps2hid_init();
     return true;
 #else
     return SDL_SetRelativeMouseMode(SDL_TRUE) == 0;

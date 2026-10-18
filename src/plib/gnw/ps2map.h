@@ -78,6 +78,10 @@ void ps2map_emit_part(int fid, int frame, int rotation, const unsigned char* fra
 // palette). intensity: the 10 vertex intensities (cache key).
 void ps2map_emit_lit_tile(int fid, const int* intensity, const unsigned char* lit, const unsigned char* base, int width, int height, int destX, int destY);
 
+// The same tile if it's already in the atlas with these light values (skips
+// lighting it on the EE). Returns false when it has to be lit and emitted.
+bool ps2map_emit_cached_lit_tile(int fid, const int* intensity, int width, int height, int destX, int destY);
+
 // A translucent object part (glass, steam, energy, red, wall).
 void ps2map_emit_trans(int fid, int frame, int rotation, const unsigned char* frameData, int frameWidth, int frameHeight,
     const unsigned char* src, int width, int height, int destX, int destY, int kind, int light);

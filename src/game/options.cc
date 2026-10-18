@@ -32,12 +32,21 @@
 #include "plib/gnw/svga.h"
 #include "plib/gnw/text.h"
 
+#ifdef __PS2__
+#include "plib/gnw/ps2controls.h"
+#endif
+
 namespace fallout {
 
 #define PREFERENCES_WINDOW_WIDTH 640
 #define PREFERENCES_WINDOW_HEIGHT 480
 
+#ifdef __PS2__
+// One more button: CONTROLS (the PS2 port's controls screen).
+#define OPTIONS_WINDOW_BUTTONS_COUNT 12
+#else
 #define OPTIONS_WINDOW_BUTTONS_COUNT 10
+#endif
 #define PRIMARY_OPTION_VALUE_COUNT 4
 #define SECONDARY_OPTION_VALUE_COUNT 2
 
@@ -377,6 +386,29 @@ static PreferenceDescription btndat[PREF_COUNT] = {
     { 2, 0, 374, 451, 0, 0, { 207, 218, 0, 0 }, 0, GAME_CONFIG_MOUSE_SENSITIVITY_KEY, 1.0, 2.5, NULL },
 };
 
+// Game preferences screen on its own (the PS2 main menu's Options).
+int options_preferences()
+{
+    // The preferences screen takes its texts from options.msg, which only
+    // the Options menu loads; load it here too.
+    int oldFont = text_curr();
+    if (!message_init(&optn_msgfl)) {
+        return -1;
+    }
+    char path[COMPAT_MAX_PATH];
+    snprintf(path, sizeof(path), "%s%s", msg_path, "options.msg");
+    if (!message_load(&optn_msgfl, path)) {
+        message_exit(&optn_msgfl);
+        return -1;
+    }
+
+    int rc = do_prefscreen();
+
+    message_exit(&optn_msgfl);
+    text_font(oldFont);
+    return rc;
+}
+
 // 0x481328
 int do_options()
 {
@@ -434,6 +466,15 @@ int do_options()
             case KEY_MINUS:
                 DecGamma();
                 break;
+#ifdef __PS2__
+            case KEY_UPPERCASE_C:
+            case KEY_LOWERCASE_C:
+                gsound_play_sfx_file("ib1p1xx1");
+                // FALLTHROUGH
+            case 505:
+                ps2controls_screen(false);
+                break;
+#endif
             }
         }
 
@@ -516,12 +557,18 @@ static int OptnStart()
         memcpy(opbtns[index], opbmp[cycle + 1], ginfo[OPTIONS_WINDOW_FRM_BUTTON_ON].width * ginfo[OPTIONS_WINDOW_FRM_BUTTON_ON].height);
     }
 
+    int windowHeight = ginfo[OPTIONS_WINDOW_FRM_BACKGROUND].height;
+#ifdef __PS2__
+    // The background has room for five buttons: make it one slot taller.
+    int slotHeight = ginfo[OPTIONS_WINDOW_FRM_BUTTON_ON].height + 3;
+    windowHeight += slotHeight;
+#endif
     int optionsWindowX = (screenGetWidth() - ginfo[OPTIONS_WINDOW_FRM_BACKGROUND].width) / 2;
-    int optionsWindowY = (screenGetHeight() - ginfo[OPTIONS_WINDOW_FRM_BACKGROUND].height) / 2 - 60;
+    int optionsWindowY = (screenGetHeight() - windowHeight) / 2 - 60;
     optnwin = win_add(optionsWindowX,
         optionsWindowY,
         ginfo[0].width,
-        ginfo[0].height,
+        windowHeight,
         256,
         WINDOW_MODAL | WINDOW_DONT_MOVE_TOP);
 
@@ -549,7 +596,24 @@ static int OptnStart()
     gmouse_set_cursor(MOUSE_CURSOR_ARROW);
 
     winbuf = win_get_buf(optnwin);
+#ifdef __PS2__
+    {
+        // Rows down to the end of the fifth button, then that slot again,
+        // then the rest (bottom edge) of the original background.
+        int width = ginfo[OPTIONS_WINDOW_FRM_BACKGROUND].width;
+        int height = ginfo[OPTIONS_WINDOW_FRM_BACKGROUND].height;
+        int split = 17 + 5 * slotHeight;
+        if (split > height) {
+            split = height;
+        }
+        unsigned char* src = opbmp[OPTIONS_WINDOW_FRM_BACKGROUND];
+        memcpy(winbuf, src, width * split);
+        memcpy(winbuf + width * split, src + width * (split - slotHeight), width * slotHeight);
+        memcpy(winbuf + width * (split + slotHeight), src + width * split, width * (height - split));
+    }
+#else
     memcpy(winbuf, opbmp[OPTIONS_WINDOW_FRM_BACKGROUND], ginfo[OPTIONS_WINDOW_FRM_BACKGROUND].width * ginfo[OPTIONS_WINDOW_FRM_BACKGROUND].height);
+#endif
 
     text_font(103);
 
@@ -560,6 +624,11 @@ static int OptnStart()
         char text[128];
 
         const char* msg = getmsg(&optn_msgfl, &optnmesg, index / 2);
+#ifdef __PS2__
+        if (index / 2 == 5) {
+            msg = "SETTINGS";
+        }
+#endif
         strcpy(text, msg);
 
         int textX = (ginfo[OPTIONS_WINDOW_FRM_BUTTON_ON].width - text_width(text)) / 2;

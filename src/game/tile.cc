@@ -1755,6 +1755,20 @@ void floor_draw(int fid, int x, int y, Rect* rect)
         }
 #endif
 
+#ifdef __PS2__
+        // GS map: a gradient tile already in the atlas (same tile, same
+        // light values) needs none of the per-pixel lighting below.
+        if (gPs2MapMode == PS2MAP_MODE_EMIT && v23 != 9) {
+            int light[10];
+            for (int i = 0; i < 10; i++) {
+                light[i] = verticies[i].intensity;
+            }
+            if (ps2map_emit_cached_lit_tile(fid, light, frameWidth, frameHeight, savedX, savedY)) {
+                goto out;
+            }
+        }
+#endif
+
         if (v23 == 9) {
             unsigned char* frame_data = art_frame_data(art, 0, 0);
             dark_trans_buf_to_buf(frame_data + frameWidth * v78 + v79, v77, v76, frameWidth, buf, x, y, buf_full, verticies[0].intensity);

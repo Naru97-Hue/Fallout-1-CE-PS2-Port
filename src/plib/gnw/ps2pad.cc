@@ -1,4 +1,5 @@
-// PlayStation 2 DualShock -> mouse/keyboard emulation.
+// PlayStation 2 DualShock -> mouse/keyboard emulation (the D-pad does
+// console-style jumps between clickable things, see ps2nav.cc).
 //
 // Fallout is a mouse-driven game, and SDL2's PS2 port exposes only the pad,
 // so the left stick drives the cursor and face/shoulder buttons are mapped to
@@ -10,6 +11,8 @@
 #ifdef __PS2__
 
 #include "plib/gnw/ps2pad.h"
+#include "plib/gnw/ps2controls.h"
+#include "plib/gnw/ps2nav.h"
 #include "plib/gnw/ps2osk.h"
 #include "plib/gnw/ps2video.h"
 
@@ -65,7 +68,6 @@ static const int kButtonKeys[PAD_BUTTON_COUNT] = {
     /* SQUARE   */ SDL_SCANCODE_RETURN, // confirm / end combat
 };
 
-static const int kStickDeadZone = 6000;
 static const int kScrollThreshold = 16000;
 // Cursor speed at full stick deflection, in game pixels per second.
 static const float kMaxCursorSpeed = 700.0f;
@@ -82,6 +84,45 @@ static float gRemainderY = 0.0f;
 // Right-stick scroll state: arrow scancode currently held per axis (0 = none).
 static int gScrollKeyX = 0;
 static int gScrollKeyY = 0;
+// D-pad presses that fell back to arrow keys (to release them on button up).
+static bool gDpadSentKey[PAD_BUTTON_COUNT];
+// The action each button started when pressed (released with the button,
+// even if the mapping changed in between). PS2_ACTION_NONE = nothing held.
+static int gPressedAction[PAD_BUTTON_COUNT] = { PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE,
+    PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE,
+    PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE };
+
+static void ps2pad_apply(int action, bool down, Ps2PadKeyCallback* emitKey)
+{
+    switch (action) {
+    case PS2_ACTION_NONE:
+        break;
+    case PS2_ACTION_LEFT_CLICK:
+        gLeftDown = down;
+        break;
+    case PS2_ACTION_RIGHT_CLICK:
+        gRightDown = down;
+        break;
+    case PS2_ACTION_KEYBOARD:
+        if (down) {
+            ps2osk_toggle();
+        }
+        break;
+    default:
+        emitKey(action, down);
+        break;
+    }
+}
+
+static void ps2pad_release(int button, Ps2PadKeyCallback* emitKey)
+{
+    if (gPressedAction[button] != PS2_ACTION_NONE) {
+        ps2pad_apply(gPressedAction[button], false, emitKey);
+        gPressedAction[button] = PS2_ACTION_NONE;
+    }
+}
+
+bool ps2pad_connected();
 
 static void ps2pad_open_first()
 {
@@ -155,6 +196,9 @@ bool ps2pad_handle_event(SDL_Event* event, Ps2PadKeyCallback* emitKey)
     case SDL_JOYBUTTONDOWN:
     case SDL_JOYBUTTONUP: {
         bool down = event->type == SDL_JOYBUTTONDOWN;
+        if (down && !ps2pad_connected()) {
+            return true;
+        }
         int button = event->jbutton.button;
         if (button >= 0 && button < PAD_BUTTON_COUNT) {
             gHeld[button] = down;
@@ -163,31 +207,56 @@ bool ps2pad_handle_event(SDL_Event* event, Ps2PadKeyCallback* emitKey)
         // L1 + R1 + Select: cycle TV output mode (480i/480p/720p/1080i).
         if (button == PAD_SELECT && gHeld[PAD_L1] && gHeld[PAD_R1]) {
             if (down) {
-                // Undo the hotkeys L1/R1 sent when they were pressed.
-                emitKey(kButtonKeys[PAD_L1], false);
-                emitKey(kButtonKeys[PAD_R1], false);
+                // Undo what L1/R1 started when they were pressed.
+                ps2pad_release(PAD_L1, emitKey);
+                ps2pad_release(PAD_R1, emitKey);
                 ps2video_cycle();
             }
             return true;
         }
 
-        if (button == PAD_R3) {
+        if (button < 0 || button >= PAD_BUTTON_COUNT) {
+            return true;
+        }
+
+        // Confirming a TV mode switched with the hotkey: X keeps it, O undoes
+        // it (the Settings screen asks with its own dialog instead).
+        if (ps2video_trial_active() && !ps2video_trial_quiet() && (button == PAD_CROSS || button == PAD_CIRCLE)) {
             if (down) {
-                ps2osk_toggle();
+                ps2video_trial_answer(button == PAD_CROSS);
             }
-        } else if (ps2osk_handle_button(button, down, emitKey)) {
+            return true;
+        }
+
+        bool keyboardButton = ps2controls_pad_action(button) == PS2_ACTION_KEYBOARD;
+        if (!keyboardButton && ps2osk_handle_button(button, down, emitKey)) {
             // consumed by the on-screen keyboard
-        } else if (button == PAD_CROSS) {
-            gLeftDown = down;
-        } else if (button == PAD_CIRCLE) {
-            gRightDown = down;
-        } else if (button >= 0 && button < PAD_BUTTON_COUNT && kButtonKeys[button] != 0) {
-            emitKey(kButtonKeys[button], down);
+        } else if (button >= PAD_UP && button <= PAD_LEFT) {
+            // Console-style: jump to the next clickable thing that way;
+            // arrow keys where there's nothing to jump to or when turned off.
+            if (down) {
+                static const int kDirX[4] = { 0, 1, 0, -1 };
+                static const int kDirY[4] = { -1, 0, 1, 0 };
+                int dir = button - PAD_UP;
+                if (!ps2nav_step(kDirX[dir], kDirY[dir])) {
+                    emitKey(kButtonKeys[button], true);
+                    gDpadSentKey[button] = true;
+                }
+            } else if (gDpadSentKey[button]) {
+                emitKey(kButtonKeys[button], false);
+                gDpadSentKey[button] = false;
+            }
+        } else if (down) {
+            ps2pad_release(button, emitKey);
+            gPressedAction[button] = ps2controls_pad_action(button);
+            ps2pad_apply(gPressedAction[button], true, emitKey);
+        } else {
+            ps2pad_release(button, emitKey);
         }
         return true;
     }
     case SDL_JOYAXISMOTION:
-        if (event->jaxis.axis < AXIS_COUNT) {
+        if (event->jaxis.axis < AXIS_COUNT && ps2pad_connected()) {
             gAxis[event->jaxis.axis] = event->jaxis.value;
             // Right stick Y acts as the mouse wheel (see ps2pad_get_wheel).
         }
@@ -202,11 +271,12 @@ bool ps2pad_handle_event(SDL_Event* event, Ps2PadKeyCallback* emitKey)
 static float ps2pad_curve(int value)
 {
     int magnitude = abs(value);
-    if (magnitude <= kStickDeadZone) {
+    int deadZone = ps2controls_dead_zone();
+    if (magnitude <= deadZone) {
         return 0.0f;
     }
 
-    float t = (float)(magnitude - kStickDeadZone) / (float)(32767 - kStickDeadZone);
+    float t = (float)(magnitude - deadZone) / (float)(32767 - deadZone);
     if (t > 1.0f) {
         t = 1.0f;
     }
@@ -242,6 +312,40 @@ int ps2pad_get_wheel()
 }
 
 void ps2pad_ensure_analog();
+bool ps2pad_connected();
+
+void ps2pad_check_connection(Ps2PadKeyCallback* emitKey)
+{
+    static bool wasConnected = true;
+    bool connected = ps2pad_connected();
+    if (wasConnected && !connected) {
+        // Unplugged mid-press: let go of everything so nothing sticks.
+        for (int button = 0; button < PAD_BUTTON_COUNT; button++) {
+            ps2pad_release(button, emitKey);
+            if (gDpadSentKey[button]) {
+                emitKey(kButtonKeys[button], false);
+            }
+            gHeld[button] = false;
+            gDpadSentKey[button] = false;
+        }
+        if (gScrollKeyX != 0) {
+            emitKey(gScrollKeyX, false);
+            gScrollKeyX = 0;
+        }
+        if (gScrollKeyY != 0) {
+            emitKey(gScrollKeyY, false);
+            gScrollKeyY = 0;
+        }
+        for (int i = 0; i < AXIS_COUNT; i++) {
+            gAxis[i] = 0;
+        }
+        gLeftDown = false;
+        gRightDown = false;
+        gRemainderX = 0.0f;
+        gRemainderY = 0.0f;
+    }
+    wasConnected = connected;
+}
 
 void ps2pad_get_mouse(int* dx, int* dy, bool* left, bool* right)
 {
@@ -257,8 +361,9 @@ void ps2pad_get_mouse(int* dx, int* dy, bool* left, bool* right)
     }
 
     float seconds = (float)elapsed / 1000.0f;
-    gRemainderX += ps2pad_curve(gAxis[AXIS_LX]) * kMaxCursorSpeed * seconds;
-    gRemainderY += ps2pad_curve(gAxis[AXIS_LY]) * kMaxCursorSpeed * seconds;
+    float speed = kMaxCursorSpeed * ps2controls_cursor_speed();
+    gRemainderX += ps2pad_curve(gAxis[AXIS_LX]) * speed * seconds;
+    gRemainderY += ps2pad_curve(gAxis[AXIS_LY]) * speed * seconds;
 
     int moveX = (int)gRemainderX;
     int moveY = (int)gRemainderY;

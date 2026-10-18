@@ -65,6 +65,7 @@ Window* GNW_find(int win);
 // it). Returns how many were written to rects (at most maxRects).
 int win_visible_rects(int win, Rect* rects, int maxRects);
 int win_top_visible(int x, int y);
+int win_list_visible(int* ids, int maxIds);
 #endif
 unsigned char* win_get_buf(int win);
 int win_get_top_win(int x, int y);
