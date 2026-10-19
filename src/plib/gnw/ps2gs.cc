@@ -21,6 +21,7 @@
 #ifdef __PS2__
 
 #include "plib/gnw/ps2gs.h"
+#include "plib/gnw/ps2scanlines.h"
 
 #include <malloc.h>
 #include <stdio.h>
@@ -774,11 +775,10 @@ bool ps2gs_present(SDL_Renderer* renderer, SDL_Surface* screen8, int screenWidth
         gsKit_set_primalpha(gs, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
         gs->PrimAlphaEnable = GS_SETTING_ON;
         u64 color = GS_SETREG_RGBAQ(0, 0, 0, kAlpha[scanlines], 0x00);
-        float band = scaleY < 1.0f ? 1.0f : scaleY;
-        for (int row = 1; row < screenHeight; row += 2) {
-            float y = row * scaleY;
-            gsKit_prim_sprite(gs, 0.0f, y, (float)gs->Width, y + band, 0, color);
-        }
+        float width = (float)gs->Width;
+        ps2scanlines_bands(gs->Height, scaleY, gs->Interlace == GS_INTERLACED, [&](float y0, float y1) {
+            gsKit_prim_sprite(gs, 0.0f, y0, width, y1, 0, color);
+        });
         if (holes) {
             gsKit_set_test(gs, GS_ATEST_ON);
         }

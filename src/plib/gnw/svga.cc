@@ -286,12 +286,38 @@ static bool createRenderer(int width, int height)
     return true;
 }
 
+static bool ps2CreateFallbackTextureOnce(int width, int height);
+
+// Made once; if that fails, not retried every frame (and nothing half-made
+// is kept).
 static bool ps2CreateFallbackTexture(int width, int height)
 {
+    static bool failed = false;
     if (gSdlTexture != NULL && gSdlTextureSurface != NULL) {
         return true;
     }
+    if (failed) {
+        return false;
+    }
     debug_printf("svga: GS direct path unavailable, creating the SDL texture\n");
+    if (ps2CreateFallbackTextureOnce(width, height)) {
+        return true;
+    }
+    debug_printf("svga: couldn't create the SDL texture\n");
+    failed = true;
+    if (gSdlTextureSurface != NULL) {
+        SDL_FreeSurface(gSdlTextureSurface);
+        gSdlTextureSurface = NULL;
+    }
+    if (gSdlTexture != NULL) {
+        SDL_DestroyTexture(gSdlTexture);
+        gSdlTexture = NULL;
+    }
+    return false;
+}
+
+static bool ps2CreateFallbackTextureOnce(int width, int height)
+{
 #endif
 #ifdef __PS2__
     // ABGR1555 is native to SDL's PS2 renderer: no per-frame CPU conversion,

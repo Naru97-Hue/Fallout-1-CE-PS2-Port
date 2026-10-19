@@ -27,6 +27,10 @@ echo "== object ids"
 ${CXX:-c++} -O2 "$ROOT/tools/smoke/objid_test.cc" -o "$TMP/objid_test"
 "$TMP/objid_test"
 
+echo "== scanlines"
+${CXX:-c++} -O2 -I"$ROOT/src" "$ROOT/tools/smoke/scanlines_test.cc" -o "$TMP/scanlines_test" -lm
+"$TMP/scanlines_test"
+
 echo "== LZSS decoder"
 ${CXX:-c++} -O2 -I"$ROOT/src" "$ROOT/tools/smoke/lzss_main.cc" "$ROOT/src/plib/db/lzss.cc" -o "$TMP/lzss_ref"
 ${CXX:-c++} -O2 -D__PS2__ -I"$ROOT/src" "$ROOT/tools/smoke/lzss_main.cc" "$ROOT/src/plib/db/lzss.cc" -o "$TMP/lzss_fast"
