@@ -510,6 +510,7 @@ static void ps2mods_restart_notice()
         if (input != -1) {
             break;
         }
+        renderPresent();
         sharedFpsLimiter.throttle();
     }
     win_delete(win);
@@ -579,6 +580,7 @@ void ps2mods_screen()
             ps2mods_write_last(gActive > 0 ? gModNames[gActive - 1] : "", !gAskAtStartup);
             ps2mods_draw();
         }
+        renderPresent();
         sharedFpsLimiter.throttle();
     }
 
