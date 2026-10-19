@@ -1,5 +1,9 @@
 #include "game/game.h"
 
+#ifdef __PS2__
+#include "plib/gnw/ps2mods.h"
+#endif
+
 #include <stdio.h>
 #include <string.h>
 
@@ -191,6 +195,13 @@ int game_init(const char* windowTitle, bool isMapper, int font, int flags, int a
     FMInit();
     text_add_manager(&alias_mgr);
     text_font(font);
+
+#ifdef __PS2__
+    // Mod loader: pick a mod (if mods/ has any) before the game reads its data.
+    if (!game_in_mapper) {
+        ps2mods_boot_menu();
+    }
+#endif
 
     register_screendump(KEY_F12, game_screendump);
     register_pause(-1, NULL);

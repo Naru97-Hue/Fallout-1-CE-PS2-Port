@@ -25,6 +25,19 @@ cmake --build build-ps2 -j8
 mips64r5900el-ps2-elf-strip -o FALLOUT.ELF build-ps2/fallout-ce
 ```
 
+Or with Docker (no toolchain install needed):
+
+```sh
+docker build -t fallout1-ce-ps2 .
+docker run --rm -v "$PWD:/src" fallout1-ce-ps2                         # build
+docker run --rm -v "$PWD:/src" fallout1-ce-ps2 tools/make_dist.sh v0.7  # release zip
+```
+
+Release helpers in tools/:
+- make_dist.sh VERSION: builds, strips and packs dist/VERSION plus a zip (ELF, README, folder layout, no game data)
+- check_no_assets.sh [folder]: fails if any game data is in git or in a release folder
+- run_smoke.sh: quick pre-release checks (no game data, valid memory card icons, ELF builds)
+
 ## Movies and audio
 
 **Game audio** (music, sound effects, speech) works out of the box: the port
@@ -132,7 +145,7 @@ Open it from the main menu (OPTIONS) or in game from the Options menu
   GAMEPAD   picture of the DualShock showing what every button does now
   KEYBOARD  picture of a keyboard with the game's hotkeys marked
   SYSTEM    save/load games on the game folder (USB/HDD) or memory card
-            1 or 2 (saves go in a FALLOUT folder on the card), plus TV output (480i/480p/720p/1080i) and the GS renderer
+            1 or 2, plus TV output (480i/480p/720p/1080i) and the GS renderer
             switches (map, mouse cursor, fades; after restart). A new TV
             output must be confirmed (YES) within 6 seconds, otherwise it
             switches back by itself - so a TV that can't show it is safe.
@@ -142,6 +155,27 @@ back; for a keyboard hotkey, click it and press the new key. D-pad moves
 between lines and tabs. DONE saves to CONTROLS.CFG next to FALLOUT.ELF,
 DEFAULTS resets the current tab, CANCEL discards changes.
 Note: rebinding a letter key also changes what that key types.
+
+
+MEMORY CARD SAVES
+-----------------
+Each save slot gets its own folder on the card (FALLOUT1-SLOT01 ...
+FALLOUT1-SLOT10) with its own icon, so the PS2 browser shows every save as
+"Fallout Slot N" with its description, and you can copy or delete saves one
+at a time. If the card is missing or too full, or writing to it fails, the
+save goes to the game folder (USB / HDD) instead and a message says so; for
+the rest of that session saving and loading use the game folder.
+
+
+MODS
+----
+Put each mod in its own folder in mods/ next to MASTER.DAT, laid out like
+the game's DATA folder (mods/MYMOD/ART/..., mods/MYMOD/MAPS/...). Its files
+replace the game's files of the same name. When mods/ has any folders, a
+CHOOSE A MOD menu appears at startup (Original game / each mod); the last
+choice is remembered (mods/LAST.TXT) and highlighted. Loose files only -
+mods that come as a .DAT need unpacking first (tools/f1dat.py). Keep save
+games of different mods in different slots.
 
 
 ON-SCREEN KEYBOARD (press R3)

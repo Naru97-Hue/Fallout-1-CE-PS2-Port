@@ -250,6 +250,10 @@ target_sources(${EXECUTABLE_NAME} PUBLIC
     "src/plib/gnw/ps2hid.h"
     "src/plib/gnw/ps2nav.cc"
     "src/plib/gnw/ps2nav.h"
+    "src/plib/gnw/ps2card.cc"
+    "src/plib/gnw/ps2card.h"
+    "src/plib/gnw/ps2mods.cc"
+    "src/plib/gnw/ps2mods.h"
     "src/plib/gnw/ps2controls.cc"
     "src/plib/gnw/ps2controls.h"
     "src/plib/gnw/grbuf.cc"
@@ -370,7 +374,7 @@ endif()
 
 if(PS2)
     find_package(SDL2 REQUIRED CONFIG)
-    set(SDL2_LIBRARIES SDL2::SDL2main SDL2::SDL2-static mpeg dma eedebug z)
+    set(SDL2_LIBRARIES SDL2::SDL2main SDL2::SDL2-static mpeg dma eedebug z mc)
     target_compile_definitions(${EXECUTABLE_NAME} PUBLIC _EE PS2 __PS2__)
     # Don't halt the console on an integer divide by zero (MIPS GCC inserts a
     # trap before every division by default).

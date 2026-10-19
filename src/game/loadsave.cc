@@ -48,6 +48,10 @@
 #include "plib/gnw/memory.h"
 #include "plib/gnw/svga.h"
 #include "plib/gnw/text.h"
+#ifdef __PS2__
+#include "plib/gnw/ps2card.h"
+#include "plib/gnw/ps2controls.h"
+#endif
 
 #ifdef __PS2__
 #include <stdlib.h>
@@ -136,6 +140,7 @@ static int QuickSnapShot();
 static int LSGameStart(int windowType);
 static int LSGameEnd(int windowType);
 static int SaveSlot();
+static int SaveSlotOnce();
 static int LoadSlot(int slot);
 static void GetTimeDate(short* day, short* month, short* year, int* hour);
 static int SaveHeader(int slot);
@@ -1516,7 +1521,7 @@ static int LSGameEnd(int windowType)
 }
 
 // 0x46F978
-static int SaveSlot()
+static int SaveSlotOnce()
 {
     ls_error_code = 0;
     map_backup_count = -1;
@@ -1598,6 +1603,73 @@ static int SaveSlot()
 
     return 0;
 }
+
+#ifdef __PS2__
+// Memory card saves: if the card is missing or too full, or writing to it
+// fails, the save goes to the game folder (USB / HDD) instead, and the
+// player is told. Card saves also get their PS2 browser icon.
+static void SaveFallbackNotice(const char* why)
+{
+    const char* body[] = {
+        why,
+        "Saved to the game folder (USB) instead.",
+        "Load it from there, or pick another place",
+        "in Settings > SYSTEM.",
+    };
+    dialog_out("SAVED TO USB", body, 4, 169, 116, colorTable[32328], NULL, colorTable[32328], DIALOG_BOX_LARGE);
+}
+
+static int SaveSlot()
+{
+    if (!compat_save_root_is_card()) {
+        return SaveSlotOnce();
+    }
+
+    char dir[COMPAT_MAX_PATH];
+    compat_card_slot_dir(slot_cursor, dir, sizeof(dir));
+    const char* root = compat_get_save_root();
+    int port = (root[2] == '1') ? 1 : 0;
+
+    // Rough room check: a new slot folder needs room for the whole save,
+    // an existing one mostly overwrites itself.
+    char probe[COMPAT_MAX_PATH];
+    snprintf(probe, sizeof(probe), "%s/SAVE.DAT", dir);
+    FILE* existing = fopen(probe, "rb");
+    if (existing != NULL) {
+        fclose(existing);
+    }
+    int needKb = existing != NULL ? 160 : 420;
+    int freeKb = ps2card_free_kb(port);
+
+    const char* why = NULL;
+    if (freeKb < 0) {
+        why = "No memory card found.";
+    } else if (freeKb < needKb) {
+        why = "The memory card is full.";
+    } else {
+        int rc = SaveSlotOnce();
+        if (rc != -1) {
+            ps2card_write_icons(dir, slot_cursor, LSData[slot_cursor].description);
+            return rc;
+        }
+        why = "Couldn't write to the memory card.";
+    }
+
+    debug_printf("LOADSAVE: %s (free %d KB, need %d KB) - saving to the game folder\n", why, freeKb, needKb);
+    compat_set_save_root(NULL);
+    ps2controls_save_location_fell_back();
+    int rc = SaveSlotOnce();
+    if (rc != -1) {
+        SaveFallbackNotice(why);
+    }
+    return rc;
+}
+#else
+static int SaveSlot()
+{
+    return SaveSlotOnce();
+}
+#endif
 
 // 0x46FCC4
 int isLoadingGame()

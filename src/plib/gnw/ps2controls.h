@@ -47,6 +47,9 @@ enum {
 };
 bool ps2controls_video_setting(int setting);
 
+// A memory card save had to go to the game folder: show that in Settings.
+void ps2controls_save_location_fell_back();
+
 // The settings screen (Controls / Gamepad / Keyboard / Video tabs). From the
 // main menu it also offers the game's preferences. Returns when closed.
 void ps2controls_screen(bool fromMainMenu);

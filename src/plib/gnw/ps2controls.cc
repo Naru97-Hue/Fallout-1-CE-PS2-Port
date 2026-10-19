@@ -143,7 +143,7 @@ enum {
     SAVE_LOCATION_COUNT,
 };
 
-static const char* kSaveRoots[SAVE_LOCATION_COUNT] = { NULL, "mc0:/FALLOUT", "mc1:/FALLOUT" };
+static const char* kSaveRoots[SAVE_LOCATION_COUNT] = { NULL, "mc0:", "mc1:" };
 static const char* kSaveNames[SAVE_LOCATION_COUNT] = { "Game folder (USB / HDD)", "Memory card 1", "Memory card 2" };
 
 static void ps2controls_apply_save_location(int location)
@@ -171,6 +171,12 @@ static bool ps2controls_card_present(int location)
 static const char* kVideoKeys[PS2_VIDEO_SETTING_COUNT] = { "gs_map", "gs_cursor", "gs_fades" };
 
 static Settings gSettings;
+
+void ps2controls_save_location_fell_back()
+{
+    // For this session only: CONTROLS.CFG keeps the player's choice.
+    gSettings.saveLocation = SAVE_LOCATION_GAME_FOLDER;
+}
 static bool gLoaded = false;
 static int gKeyMap[SDL_NUM_SCANCODES]; // physical -> game scancode
 

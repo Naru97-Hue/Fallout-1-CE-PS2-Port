@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include "platform_compat.h"
 
 #include <stdio.h>
@@ -271,6 +272,10 @@ static bool compat_is_host_path(const char* nativePath)
 }
 #endif
 
+#ifdef __PS2__
+static FILE* compat_mod_fopen(const char* nativePath, const char* mode);
+#endif
+
 FILE* compat_fopen(const char* path, const char* mode)
 {
     char nativePath[COMPAT_MAX_PATH];
@@ -278,6 +283,10 @@ FILE* compat_fopen(const char* path, const char* mode)
     compat_windows_path_to_native(nativePath);
     compat_resolve_path(nativePath);
 #ifdef __PS2__
+    FILE* modStream = compat_mod_fopen(nativePath, mode);
+    if (modStream != NULL) {
+        return modStream;
+    }
     // An empty .SAV is a map state "deleted" where removing files isn't
     // possible (see compat_remove): treat it as missing.
     if (mode[0] == 'r' && compat_is_sav(nativePath)) {
@@ -399,7 +408,10 @@ void compat_windows_path_to_native(char* path)
 
 #ifdef __PS2__
 // Where SAVEGAME lives (NULL: inside the game's data folder). For a memory
-// card this is e.g. "mc0:/FALLOUT"; ".../SAVEGAME/..." paths are moved there.
+// card this is the card ("mc0:"): every save slot gets its own card folder
+// (FALLOUT1-SLOT01 ...), each with its own icon, so the PS2 browser shows,
+// copies and deletes saves one at a time. Elsewhere (USB / HDD) it's a
+// folder that takes ".../SAVEGAME/..." as usual.
 static char gSaveRoot[32] = { 0 };
 
 void compat_set_save_root(const char* root)
@@ -409,12 +421,21 @@ void compat_set_save_root(const char* root)
         return;
     }
     snprintf(gSaveRoot, sizeof(gSaveRoot), "%s", root);
-    mkdir(gSaveRoot, 0755); // the card's FALLOUT folder (fails harmlessly if present)
 }
 
 const char* compat_get_save_root()
 {
     return gSaveRoot[0] != '\0' ? gSaveRoot : NULL;
+}
+
+bool compat_save_root_is_card()
+{
+    return compat_strnicmp(gSaveRoot, "mc", 2) == 0 && gSaveRoot[3] == ':';
+}
+
+void compat_card_slot_dir(int slot, char* out, size_t size)
+{
+    snprintf(out, size, "%s/FALLOUT1-SLOT%02d", gSaveRoot, slot + 1);
 }
 
 static void compat_redirect_save_path(char* path)
@@ -428,11 +449,55 @@ static void compat_redirect_save_path(char* path)
         if ((p == path || p[-1] == '/') && compat_strnicmp(p, "savegame", 8) == 0 && (p[8] == '/' || p[8] == '\0')) {
             char rest[COMPAT_MAX_PATH];
             snprintf(rest, sizeof(rest), "%s", p + 8);
-            snprintf(path, COMPAT_MAX_PATH, "%s/SAVEGAME%s", gSaveRoot, rest);
+            if (!compat_save_root_is_card()) {
+                snprintf(path, COMPAT_MAX_PATH, "%s/SAVEGAME%s", gSaveRoot, rest);
+                return;
+            }
+            // Card: "/SLOTnn/..." -> "mc0:/FALLOUT1-SLOTnn/...". SAVEGAME
+            // itself is the card root (so nothing icon-less is created).
+            if (compat_strnicmp(rest, "/slot", 5) == 0 && isdigit((unsigned char)rest[5]) && isdigit((unsigned char)rest[6])) {
+                int slot = (rest[5] - '0') * 10 + (rest[6] - '0');
+                char dir[COMPAT_MAX_PATH];
+                compat_card_slot_dir(slot - 1, dir, sizeof(dir));
+                snprintf(path, COMPAT_MAX_PATH, "%s%s", dir, rest + 7);
+            } else {
+                snprintf(path, COMPAT_MAX_PATH, "%s%s", gSaveRoot, rest[0] != '\0' ? rest : "/");
+            }
             return;
         }
         p++;
     }
+}
+
+// Mod overlay: loose files in mods/<name>/ replace the game's data/ files.
+static char gModRoot[64] = { 0 };
+
+void compat_set_mod_root(const char* root)
+{
+    snprintf(gModRoot, sizeof(gModRoot), "%s", root != NULL ? root : "");
+}
+
+const char* compat_get_mod_root()
+{
+    return gModRoot[0] != '\0' ? gModRoot : NULL;
+}
+
+// Read-only opens of "data/..." try "mods/<name>/..." first.
+static FILE* compat_mod_fopen(const char* nativePath, const char* mode)
+{
+    if (gModRoot[0] == '\0' || mode[0] != 'r' || strchr(mode, '+') != NULL) {
+        return NULL;
+    }
+    const char* p = nativePath;
+    if (p[0] == '.' && p[1] == '/') {
+        p += 2;
+    }
+    if (compat_strnicmp(p, "data/", 5) != 0) {
+        return NULL;
+    }
+    char modPath[COMPAT_MAX_PATH];
+    snprintf(modPath, sizeof(modPath), "%s/%s", gModRoot, p + 5);
+    return fopen(modPath, mode);
 }
 #endif
 

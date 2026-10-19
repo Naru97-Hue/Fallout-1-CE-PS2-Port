@@ -392,3 +392,6 @@ FodyWeavers.xsd
 /out
 /build
 build-ps2/
+
+# PS2 release output
+dist/

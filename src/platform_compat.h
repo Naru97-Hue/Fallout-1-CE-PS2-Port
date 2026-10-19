@@ -44,6 +44,10 @@ void compat_resolve_path(char* path);
 // Save games on another device (e.g. "mc0:/FALLOUT"); NULL = game folder.
 void compat_set_save_root(const char* root);
 const char* compat_get_save_root();
+bool compat_save_root_is_card();
+void compat_card_slot_dir(int slot, char* out, size_t size);
+void compat_set_mod_root(const char* root);
+const char* compat_get_mod_root();
 #endif
 char* compat_strdup(const char* string);
 long getFileSize(FILE* stream);
