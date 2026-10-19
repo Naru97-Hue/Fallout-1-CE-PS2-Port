@@ -621,6 +621,13 @@ static int StartPipboy(int intent)
     hot_line_start = 0;
     hot_back_line = 0;
 
+#ifdef __PS2__
+    // pipboy.msg (1000+ lines) was parsed again on every opening, a
+    // noticeable pause on the PS2. It can't change during a session, so it
+    // stays loaded after the first time (~50 KB).
+    static bool messagesLoaded = false;
+    if (!messagesLoaded) {
+#endif
     if (!message_init(&pipboy_message_file)) {
         return -1;
     }
@@ -631,6 +638,10 @@ static int StartPipboy(int intent)
     if (!(message_load(&pipboy_message_file, path))) {
         return -1;
     }
+#ifdef __PS2__
+        messagesLoaded = true;
+    }
+#endif
 
     int index;
     for (index = 0; index < PIPBOY_FRM_COUNT; index++) {
@@ -818,7 +829,9 @@ static void EndPipboy()
 
     win_delete(pip_win);
 
+#ifndef __PS2__
     message_exit(&pipboy_message_file);
+#endif
 
     for (int index = 0; index < PIPBOY_FRM_COUNT; index++) {
         art_ptr_unlock(grphkey[index]);

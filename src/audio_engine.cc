@@ -213,7 +213,7 @@ static void audioEngineMixin(void* userData, Uint8* stream, int length)
     }
 }
 
-bool audioEngineInit()
+static bool audioEngineOpen()
 {
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) == -1) {
         return false;
@@ -239,7 +239,9 @@ bool audioEngineInit()
 #else
     gAudioEngineDeviceId = SDL_OpenAudioDevice(NULL, 0, &desiredSpec, &gAudioEngineSpec, SDL_AUDIO_ALLOW_ANY_CHANGE);
 #endif
-    if (gAudioEngineDeviceId == -1) {
+    // SDL reports failure as 0, not -1.
+    if (gAudioEngineDeviceId == 0 || gAudioEngineDeviceId == (SDL_AudioDeviceID)-1) {
+        gAudioEngineDeviceId = -1;
         return false;
     }
 
@@ -247,6 +249,60 @@ bool audioEngineInit()
 
     return true;
 }
+
+#ifdef __PS2__
+// On a PS2 opening audio loads the sound driver (audsrv) on the I/O
+// processor and then waits for it to answer. If the driver can't start
+// (a broken or unusual setup) that wait never ends and the game froze at
+// boot. Open it on a helper thread instead and give up after a few seconds:
+// the game then just runs without sound.
+static SDL_sem* gAudioOpenDone = NULL;
+static SDL_atomic_t gAudioOpenAbandoned;
+static bool gAudioOpenResult = false;
+
+static int audioEngineOpenThread(void*)
+{
+    bool ok = audioEngineOpen();
+    if (SDL_AtomicGet(&gAudioOpenAbandoned) != 0) {
+        // Too late: the game already went on without sound.
+        if (ok) {
+            SDL_CloseAudioDevice(gAudioEngineDeviceId);
+            gAudioEngineDeviceId = -1;
+        }
+        return 0;
+    }
+    gAudioOpenResult = ok;
+    SDL_SemPost(gAudioOpenDone);
+    return 0;
+}
+
+bool audioEngineInit()
+{
+    gAudioOpenDone = SDL_CreateSemaphore(0);
+    SDL_Thread* thread = gAudioOpenDone != NULL ? SDL_CreateThread(audioEngineOpenThread, "audio-open", NULL) : NULL;
+    if (thread == NULL) {
+        return audioEngineOpen();
+    }
+    if (SDL_SemWaitTimeout(gAudioOpenDone, 5000) != 0) {
+        SDL_AtomicSet(&gAudioOpenAbandoned, 1);
+        debug_printf("audio: the sound driver didn't answer in 5 s - playing without sound\n");
+        SDL_DetachThread(thread);
+        return false;
+    }
+    SDL_WaitThread(thread, NULL);
+    SDL_DestroySemaphore(gAudioOpenDone);
+    gAudioOpenDone = NULL;
+    if (!gAudioOpenResult) {
+        debug_printf("audio: couldn't open the sound device - playing without sound\n");
+    }
+    return gAudioOpenResult;
+}
+#else
+bool audioEngineInit()
+{
+    return audioEngineOpen();
+}
+#endif
 
 void audioEngineExit()
 {

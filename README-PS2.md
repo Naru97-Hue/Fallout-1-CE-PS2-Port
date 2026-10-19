@@ -220,6 +220,17 @@ The left stick still moves the cursor while the keyboard is open.
 Skilldex: open the keyboard and type S.
 
 
+LOADING SPEED
+-------------
+Map loading avoids a slow search the original game did for every new
+object's ID, compressed game files unpack with a faster decoder, image sizes
+are remembered instead of re-read, and the Pip-Boy's text is loaded once.
+(Ideas from the commit notes of Nicolasalucin/fallout1-ce-ps2; the code
+here was written separately.)
+If the sound driver doesn't start within 5 seconds the game carries on
+without sound instead of freezing.
+
+
 GRAPHICS (GS renderer)
 ----------------------
 The PS2's Graphics Synthesizer draws the map: floor tiles, objects

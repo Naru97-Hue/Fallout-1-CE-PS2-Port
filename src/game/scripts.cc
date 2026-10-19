@@ -401,6 +401,37 @@ int new_obj_id()
     // 0x51C7D4
     static int cur_id = 4;
 
+#ifdef __PS2__
+    // Same result as the original below, without its cost: it checked
+    // candidate ids one at a time against every object in the world, so a
+    // run of taken ids (common right after a map loads) meant thousands of
+    // full scans. Here one pass marks the taken ids just above cur_id in a
+    // bitmap, then the first free one is picked from that.
+    {
+        enum { WINDOW = 32768 };
+        static unsigned int taken[WINDOW / 32];
+        memset(taken, 0, sizeof(taken));
+        int base = cur_id + 1;
+        for (Object* obj = obj_find_first(); obj != NULL; obj = obj_find_next()) {
+            unsigned int offset = (unsigned int)(obj->id - base);
+            if (offset < WINDOW) {
+                taken[offset >> 5] |= 1u << (offset & 31);
+            }
+        }
+        for (unsigned int offset = 0; offset < WINDOW; offset++) {
+            if ((taken[offset >> 5] & (1u << (offset & 31))) == 0) {
+                cur_id = base + (int)offset;
+                if (cur_id >= 18000) {
+                    debug_printf("\n    ERROR: new_obj_id() !!!! Picked PLAYER ID!!!!");
+                }
+                cur_id++;
+                return cur_id;
+            }
+        }
+        // All of the window taken (never in practice): the original way.
+    }
+#endif
+
     Object* ptr;
 
     do {

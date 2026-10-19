@@ -23,6 +23,11 @@ ${CXX:-c++} -D__PS2__ -include "$ROOT/tools/smoke/stub/funopen_shim.h" -I"$ROOT/
     "$ROOT/tools/smoke/modarc_test.cc" "$ROOT/src/plib/gnw/ps2modarc.cc" -o "$TMP/modarc_test" -lz
 "$TMP/modarc_test" "$TMP/TEST.ZIP" "$TMP/TEST.DAT"
 
+echo "== LZSS decoder"
+${CXX:-c++} -O2 -I"$ROOT/src" "$ROOT/tools/smoke/lzss_main.cc" "$ROOT/src/plib/db/lzss.cc" -o "$TMP/lzss_ref"
+${CXX:-c++} -O2 -D__PS2__ -I"$ROOT/src" "$ROOT/tools/smoke/lzss_main.cc" "$ROOT/src/plib/db/lzss.cc" -o "$TMP/lzss_fast"
+python3 "$ROOT/tools/smoke/check_lzss.py" "$TMP/lzss_ref" "$TMP/lzss_fast" "$TMP"
+
 if command -v mips64r5900el-ps2-elf-gcc >/dev/null 2>&1 && [ -d "$ROOT/build-ps2" ]; then
     echo "== PS2 build"
     cmake --build "$ROOT/build-ps2" -j"$(nproc 2>/dev/null || echo 4)" >/dev/null

@@ -933,9 +933,48 @@ int art_alias_fid(int fid)
     return -1;
 }
 
+#ifdef __PS2__
+// The art cache asks for an image's size before loading it, and that meant
+// opening and unpacking the start of the file twice for every load - and
+// again each time an evicted image comes back (all the time in big towns).
+// Sizes can't change during a session, so they're remembered here.
+#define ART_SIZE_CACHE 4096
+static int art_size_fids[ART_SIZE_CACHE];
+static int art_size_values[ART_SIZE_CACHE];
+static bool art_size_cache_ready = false;
+
+static bool art_size_cache_get(int fid, int* sizePtr)
+{
+    if (!art_size_cache_ready) {
+        for (int i = 0; i < ART_SIZE_CACHE; i++) {
+            art_size_fids[i] = -1;
+        }
+        art_size_cache_ready = true;
+    }
+    unsigned int slot = ((unsigned int)fid * 2654435761u) >> 20; // 12 bits
+    if (art_size_fids[slot] == fid) {
+        *sizePtr = art_size_values[slot];
+        return true;
+    }
+    return false;
+}
+
+static void art_size_cache_put(int fid, int size)
+{
+    unsigned int slot = ((unsigned int)fid * 2654435761u) >> 20;
+    art_size_fids[slot] = fid;
+    art_size_values[slot] = size;
+}
+#endif
+
 // 0x4191D8
 int art_data_size(int fid, int* sizePtr)
 {
+#ifdef __PS2__
+    if (art_size_cache_get(fid, sizePtr)) {
+        return 0;
+    }
+#endif
     DB_DATABASE* oldDb = INVALID_DATABASE_HANDLE;
     int result = -1;
 
@@ -954,6 +993,9 @@ int art_data_size(int fid, int* sizePtr)
             if (art_readFrameData(&art, stream) == 0) {
                 *sizePtr = artGetDataSize(&art);
                 result = 0;
+#ifdef __PS2__
+                art_size_cache_put(fid, *sizePtr);
+#endif
             }
             db_fclose(stream);
         }

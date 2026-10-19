@@ -7,6 +7,7 @@
 
 #include "plib/db/lzss.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 namespace fallout {
@@ -33,9 +34,78 @@ static unsigned char* decode_buffer_end;
 // 0x6B0C70
 static unsigned char ring_buffer[4116];
 
+#ifdef __PS2__
+// Faster decoder for the PS2 (same output as the one below): the whole
+// compressed block is read with one fread, the loop keeps its state in
+// registers instead of globals, and back-references that don't wrap around
+// the 4 KB ring are copied with memcpy instead of byte by byte.
+static int lzss_decode_to_buf_fast(FILE* in, unsigned char* dest, unsigned int length)
+{
+    static unsigned char* input = NULL;
+    static unsigned int inputCapacity = 0;
+    if (length > inputCapacity) {
+        unsigned char* grown = (unsigned char*)realloc(input, length);
+        if (grown == NULL) {
+            return -1;
+        }
+        input = grown;
+        inputCapacity = length;
+    }
+    size_t got = fread(input, 1, length, in);
+
+    unsigned char* ring = ring_buffer;
+    memset(ring, ' ', 4078);
+    unsigned int r = 4078;
+    const unsigned char* p = input;
+    const unsigned char* end = input + got;
+    unsigned char* out = dest;
+
+    while (p < end) {
+        unsigned int flags = *p++;
+        for (int bit = 0; bit < 8 && p < end; bit++, flags >>= 1) {
+            if ((flags & 1) != 0) {
+                unsigned char c = *p++;
+                *out++ = c;
+                ring[r] = c;
+                r = (r + 1) & 0xFFF;
+            } else {
+                if (end - p < 2) {
+                    p = end;
+                    break;
+                }
+                unsigned int offset = p[0] | ((p[1] & 0xF0) << 4);
+                unsigned int count = (p[1] & 0x0F) + 3;
+                p += 2;
+                if (offset + count <= 4096 && r + count <= 4096 && (offset + count <= r || r + count <= offset)) {
+                    memcpy(out, ring + offset, count);
+                    memcpy(ring + r, out, count);
+                    out += count;
+                    r = (r + count) & 0xFFF;
+                } else {
+                    for (unsigned int k = 0; k < count; k++) {
+                        unsigned char c = ring[(offset + k) & 0xFFF];
+                        *out++ = c;
+                        ring[r] = c;
+                        r = (r + 1) & 0xFFF;
+                    }
+                }
+            }
+        }
+    }
+    ring_buffer_index = r;
+    return (int)(out - dest);
+}
+#endif
+
 // 0x4CA260
 int lzss_decode_to_buf(FILE* in, unsigned char* dest, unsigned int length)
 {
+#ifdef __PS2__
+    int fast = lzss_decode_to_buf_fast(in, dest, length);
+    if (fast >= 0) {
+        return fast;
+    }
+#endif
     unsigned char* curr;
     unsigned char byte;
 

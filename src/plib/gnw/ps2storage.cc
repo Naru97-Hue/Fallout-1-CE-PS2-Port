@@ -19,6 +19,9 @@
 
 #include <dirent.h>
 #include <stdio.h>
+#include <malloc.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <kernel.h>
@@ -107,8 +110,24 @@ static bool ps2storage_search_devices(char* out, size_t size, bool log)
 
 static void ps2storage_load_mmce()
 {
+    // The driver is sent to the I/O processor by DMA, which needs a 16-byte
+    // aligned buffer; a misaligned one fails on a real PS2 (PCSX2 doesn't
+    // care). The build aligns it already - this copies it if that ever
+    // changes, instead of failing silently.
+    void* module = ps2_mmceman_irx;
+    void* copy = NULL;
+    if (((uintptr_t)module & 15) != 0) {
+        copy = memalign(64, size_ps2_mmceman_irx);
+        if (copy == NULL) {
+            return;
+        }
+        memcpy(copy, ps2_mmceman_irx, size_ps2_mmceman_irx);
+        module = copy;
+        printf("fallout-ce PS2: MMCE driver was misaligned, copied\n");
+    }
     int ret = 0;
-    int id = SifExecModuleBuffer(ps2_mmceman_irx, size_ps2_mmceman_irx, 0, NULL, &ret);
+    int id = SifExecModuleBuffer(module, size_ps2_mmceman_irx, 0, NULL, &ret);
+    free(copy);
     printf("fallout-ce PS2: MMCE driver: id %d, ret %d\n", id, ret);
 }
 
