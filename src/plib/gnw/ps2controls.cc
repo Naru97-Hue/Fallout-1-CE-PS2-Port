@@ -1042,8 +1042,8 @@ static void ps2controls_draw()
         ps2controls_text("6 seconds or it switches back by itself.", 30, CONTENT_TOP + 110, gDim);
         ps2controls_text("GS options apply after restarting the game.", 30, CONTENT_TOP + 128, gDim);
         ps2controls_text("SAVE GAMES", 30, CONTENT_TOP + 183, gYellow);
-        ps2controls_text("Used by both the save and the load screen. Memory card saves go", 30, CONTENT_TOP + 226, gDim);
-        ps2controls_text("in a FALLOUT folder; each save is a few hundred KB.", 30, CONTENT_TOP + 240, gDim);
+        ps2controls_text("Used by both the save and the load screen. Memory card saves get", 30, CONTENT_TOP + 226, gDim);
+        ps2controls_text("one folder per slot, with its own icon in the PS2 browser.", 30, CONTENT_TOP + 240, gDim);
         ps2controls_draw_vault_boy(480, CONTENT_TOP + 4);
     }
 

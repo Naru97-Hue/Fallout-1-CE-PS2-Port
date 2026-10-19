@@ -11,6 +11,14 @@ namespace fallout {
 // the last choice is remembered in mods/LAST.TXT and highlighted.
 void ps2mods_boot_menu();
 
+// How many mods are installed (after ps2mods_boot_menu).
+int ps2mods_count();
+
+// The MODS screen (main menu): the installed mods with their artwork
+// (mods/<NAME>/PREVIEW.BMP) and description (mods/<NAME>/MOD.TXT). The
+// choice is remembered and used from the next start.
+void ps2mods_screen();
+
 } // namespace fallout
 
 #endif /* __PS2__ */

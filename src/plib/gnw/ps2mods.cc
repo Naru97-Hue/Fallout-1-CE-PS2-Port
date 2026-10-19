@@ -15,6 +15,16 @@
 #include "plib/gnw/intrface.h"
 #include "plib/gnw/svga.h"
 #include "plib/gnw/text.h"
+#include "fps_limiter.h"
+#include "game/gsound.h"
+#include "plib/gnw/button.h"
+#include "plib/gnw/gnw.h"
+#include "plib/gnw/grbuf.h"
+#include "plib/gnw/input.h"
+#include "plib/gnw/kb.h"
+
+#include <SDL.h>
+#include <stdlib.h>
 
 namespace fallout {
 
@@ -58,9 +68,14 @@ static void ps2mods_scan()
     closedir(dir);
 }
 
+// mods/LAST.TXT: line 1 the mod in use (empty: none), line 2 "menu=0" when
+// the startup menu is turned off.
+static bool gAskAtStartup = true;
+
 static void ps2mods_read_last(char* out, size_t size)
 {
     out[0] = '\0';
+    gAskAtStartup = true;
     FILE* stream = fopen("mods/LAST.TXT", "rb");
     if (stream == NULL) {
         return;
@@ -68,22 +83,40 @@ static void ps2mods_read_last(char* out, size_t size)
     if (fgets(out, (int)size, stream) == NULL) {
         out[0] = '\0';
     }
+    char line[32];
+    if (fgets(line, sizeof(line), stream) != NULL && strncmp(line, "menu=0", 6) == 0) {
+        gAskAtStartup = false;
+    }
     fclose(stream);
     out[strcspn(out, "\r\n")] = '\0';
 }
 
-static void ps2mods_write_last(const char* name)
+static void ps2mods_write_last(const char* name, bool ask)
 {
     char last[MOD_NAME_SIZE];
     ps2mods_read_last(last, sizeof(last));
-    if (strcmp(last, name) == 0) {
+    if (strcmp(last, name) == 0 && gAskAtStartup == ask) {
         return; // unchanged: don't touch the USB stick
     }
     FILE* stream = fopen("mods/LAST.TXT", "wb");
     if (stream != NULL) {
-        fprintf(stream, "%s\n", name);
+        fprintf(stream, "%s\n%s\n", name, ask ? "menu=1" : "menu=0");
         fclose(stream);
     }
+    gAskAtStartup = ask;
+}
+
+static void ps2mods_use(const char* name)
+{
+    if (name == NULL || name[0] == '\0') {
+        compat_set_mod_root(NULL);
+        debug_printf("ps2mods: playing the original game\n");
+        return;
+    }
+    char root[64];
+    snprintf(root, sizeof(root), "mods/%s", name);
+    compat_set_mod_root(root);
+    debug_printf("ps2mods: using mod '%s'\n", name);
 }
 
 void ps2mods_boot_menu()
@@ -91,12 +124,6 @@ void ps2mods_boot_menu()
     ps2mods_scan();
     if (gModCount == 0) {
         return;
-    }
-
-    char* items[MAX_MODS + 1];
-    items[0] = (char*)"Original game (no mod)";
-    for (int i = 0; i < gModCount; i++) {
-        items[i + 1] = gModNames[i];
     }
 
     char last[MOD_NAME_SIZE];
@@ -108,22 +135,413 @@ void ps2mods_boot_menu()
         }
     }
 
+    // Menu turned off (MODS screen): just start with the remembered choice.
+    if (!gAskAtStartup) {
+        ps2mods_use(start > 0 ? gModNames[start - 1] : NULL);
+        return;
+    }
+
+    char* items[MAX_MODS + 1];
+    items[0] = (char*)"Original game (no mod)";
+    for (int i = 0; i < gModCount; i++) {
+        items[i + 1] = gModNames[i];
+    }
+
     int x = screenGetWidth() / 2 - 120;
     int y = screenGetHeight() / 2 - 100;
     int choice = win_list_select_at("CHOOSE A MOD", items, gModCount + 1, NULL, x, y, colorTable[32747] | 0x10000, start);
 
-    if (choice <= 0) {
-        compat_set_mod_root(NULL);
-        ps2mods_write_last("");
-        debug_printf("ps2mods: playing the original game\n");
+    const char* name = choice > 0 ? gModNames[choice - 1] : "";
+    ps2mods_use(name);
+    ps2mods_write_last(name, true);
+}
+
+int ps2mods_count()
+{
+    return gModCount;
+}
+
+// --- MODS screen (main menu) -------------------------------------------------------
+
+#define SCREEN_W 640
+#define SCREEN_H 480
+#define LIST_X 24
+#define LIST_Y 70
+#define LIST_W 250
+#define LIST_ROW 17
+#define LIST_ROWS 20
+#define ART_X 300
+#define ART_Y 70
+#define ART_W 316
+#define ART_H 237
+#define INFO_Y 318
+
+#define EVENT_ITEM 2000
+#define EVENT_USE 2100
+#define EVENT_ASK 2101
+#define EVENT_BACK 2102
+
+typedef struct ModInfo {
+    char title[64];
+    char author[64];
+    char lines[6][80];
+    int lineCount;
+} ModInfo;
+
+static int gWin = -1;
+static unsigned char* gBuf = NULL;
+static int gSelected = 0; // 0 = original game, n = gModNames[n - 1]
+static int gActive = 0; // what LAST.TXT says
+static unsigned char* gArt = NULL; // ART_W x ART_H, palette indices
+static int gArtW = 0;
+static int gArtH = 0;
+static ModInfo gInfo;
+
+// MOD.TXT: line 1 the name, line 2 author / version, the rest a description
+// (word-wrapped to the box).
+static void ps2mods_load_info(int item)
+{
+    memset(&gInfo, 0, sizeof(gInfo));
+    if (item == 0) {
+        snprintf(gInfo.title, sizeof(gInfo.title), "Original game");
+        snprintf(gInfo.lines[0], sizeof(gInfo.lines[0]), "Fallout as it shipped, no mod files used.");
+        gInfo.lineCount = 1;
+        return;
+    }
+    const char* name = gModNames[item - 1];
+    snprintf(gInfo.title, sizeof(gInfo.title), "%s", name);
+
+    char path[COMPAT_MAX_PATH];
+    snprintf(path, sizeof(path), "mods/%s/MOD.TXT", name);
+    FILE* stream = fopen(path, "rb");
+    if (stream == NULL) {
+        snprintf(gInfo.lines[0], sizeof(gInfo.lines[0]), "No MOD.TXT in this mod's folder.");
+        gInfo.lineCount = 1;
         return;
     }
 
-    char root[64];
-    snprintf(root, sizeof(root), "mods/%s", gModNames[choice - 1]);
-    compat_set_mod_root(root);
-    ps2mods_write_last(gModNames[choice - 1]);
-    debug_printf("ps2mods: using mod '%s'\n", gModNames[choice - 1]);
+    char line[256];
+    int lineNo = 0;
+    char text[1024] = "";
+    while (fgets(line, sizeof(line), stream) != NULL) {
+        line[strcspn(line, "\r\n")] = '\0';
+        if (lineNo == 0 && line[0] != '\0') {
+            snprintf(gInfo.title, sizeof(gInfo.title), "%s", line);
+        } else if (lineNo == 1) {
+            snprintf(gInfo.author, sizeof(gInfo.author), "%s", line);
+        } else if (strlen(text) + strlen(line) + 2 < sizeof(text)) {
+            if (text[0] != '\0') {
+                strcat(text, " ");
+            }
+            strcat(text, line);
+        }
+        lineNo++;
+    }
+    fclose(stream);
+
+    // Word wrap into the description box.
+    const int maxWidth = SCREEN_W - 2 * LIST_X - LIST_W - 10;
+    char* p = text;
+    while (*p != '\0' && gInfo.lineCount < 6) {
+        while (*p == ' ') {
+            p++;
+        }
+        char* out = gInfo.lines[gInfo.lineCount];
+        int len = 0;
+        int lastSpace = -1;
+        while (p[len] != '\0' && len < 79) {
+            out[len] = p[len];
+            out[len + 1] = '\0';
+            if (text_width(out) > maxWidth) {
+                break;
+            }
+            if (p[len] == ' ') {
+                lastSpace = len;
+            }
+            len++;
+        }
+        if (p[len] != '\0' && lastSpace > 0) {
+            len = lastSpace;
+        }
+        out[len] = '\0';
+        p += len;
+        gInfo.lineCount++;
+    }
+}
+
+// PREVIEW.BMP (any size; 8, 24 or 32-bit), scaled to fit the art box and
+// mapped to the game's palette.
+static void ps2mods_load_art(int item)
+{
+    free(gArt);
+    gArt = NULL;
+    gArtW = 0;
+    gArtH = 0;
+    if (item == 0) {
+        return;
+    }
+
+    char path[COMPAT_MAX_PATH];
+    snprintf(path, sizeof(path), "mods/%s/PREVIEW.BMP", gModNames[item - 1]);
+    SDL_Surface* loaded = SDL_LoadBMP(path);
+    if (loaded == NULL) {
+        return;
+    }
+    SDL_Surface* rgb = SDL_ConvertSurfaceFormat(loaded, SDL_PIXELFORMAT_RGB888, 0);
+    SDL_FreeSurface(loaded);
+    if (rgb == NULL) {
+        return;
+    }
+
+    // Fit inside the box, keeping the shape.
+    int w = ART_W;
+    int h = rgb->h * ART_W / (rgb->w > 0 ? rgb->w : 1);
+    if (h > ART_H) {
+        h = ART_H;
+        w = rgb->w * ART_H / (rgb->h > 0 ? rgb->h : 1);
+    }
+    if (w > 0 && h > 0) {
+        gArt = (unsigned char*)malloc(w * h);
+    }
+    if (gArt != NULL) {
+        SDL_LockSurface(rgb);
+        for (int y = 0; y < h; y++) {
+            const Uint32* row = (const Uint32*)((const Uint8*)rgb->pixels + (y * rgb->h / h) * rgb->pitch);
+            for (int x = 0; x < w; x++) {
+                Uint32 c = row[x * rgb->w / w];
+                int r = (c >> 16) & 0xFF;
+                int g = (c >> 8) & 0xFF;
+                int b = c & 0xFF;
+                gArt[y * w + x] = (unsigned char)colorTable[((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3)];
+            }
+        }
+        SDL_UnlockSurface(rgb);
+        gArtW = w;
+        gArtH = h;
+    }
+    SDL_FreeSurface(rgb);
+}
+
+static void ps2mods_select(int item)
+{
+    gSelected = item;
+    ps2mods_load_info(item);
+    ps2mods_load_art(item);
+}
+
+static void ps2mods_text(const char* text, int x, int y, int color)
+{
+    if (x < 0 || x >= SCREEN_W || y < 0 || y >= SCREEN_H - text_height()) {
+        return;
+    }
+    text_to_buf(gBuf + SCREEN_W * y + x, text, SCREEN_W - x, SCREEN_W, color);
+}
+
+static void ps2mods_text_fit(const char* text, int x, int y, int maxWidth, int color)
+{
+    char fit[80];
+    snprintf(fit, sizeof(fit), "%s", text);
+    size_t len = strlen(fit);
+    while (len > 1 && text_width(fit) > maxWidth) {
+        fit[--len] = '\0';
+        if (len > 3) {
+            fit[len - 1] = '.';
+            fit[len - 2] = '.';
+        }
+    }
+    ps2mods_text(fit, x, y, color);
+}
+
+static void ps2mods_draw()
+{
+    const int green = colorTable[992];
+    const int bright = colorTable[32767];
+    const int yellow = colorTable[18979];
+    const int dim = colorTable[10570];
+    const int itemCount = gModCount + 1 < LIST_ROWS ? gModCount + 1 : LIST_ROWS;
+
+    buf_fill(gBuf, SCREEN_W, SCREEN_H, SCREEN_W, colorTable[0]);
+    draw_box(gBuf, SCREEN_W, 8, 8, SCREEN_W - 9, SCREEN_H - 9, green);
+
+    text_font(103);
+    ps2mods_text("MODS", SCREEN_W / 2 - text_width("MODS") / 2, 16, yellow);
+    text_font(101);
+    draw_line(gBuf, SCREEN_W, 16, 50, SCREEN_W - 17, 50, dim);
+
+    // List.
+    ps2mods_text("INSTALLED", LIST_X, LIST_Y - 16, yellow);
+    for (int i = 0; i < itemCount; i++) {
+        int y = LIST_Y + i * LIST_ROW;
+        const char* name = i == 0 ? "Original game" : gModNames[i - 1];
+        if (i == gSelected) {
+            draw_box(gBuf, SCREEN_W, LIST_X - 4, y - 2, LIST_X + LIST_W, y + LIST_ROW - 4, green);
+        }
+        ps2mods_text_fit(name, LIST_X + 12, y, LIST_W - 70, i == gSelected ? bright : green);
+        if (i == gActive) {
+            ps2mods_text("*", LIST_X, y, yellow);
+            ps2mods_text("IN USE", LIST_X + LIST_W - text_width("IN USE") - 6, y, yellow);
+        }
+    }
+
+    // Artwork.
+    draw_box(gBuf, SCREEN_W, ART_X - 2, ART_Y - 2, ART_X + ART_W + 1, ART_Y + ART_H + 1, dim);
+    if (gArt != NULL) {
+        int ox = ART_X + (ART_W - gArtW) / 2;
+        int oy = ART_Y + (ART_H - gArtH) / 2;
+        buf_to_buf(gArt, gArtW, gArtH, gArtW, gBuf + SCREEN_W * oy + ox, SCREEN_W);
+    } else {
+        const char* none = gSelected == 0 ? "FALLOUT" : "No artwork (PREVIEW.BMP)";
+        if (gSelected == 0) {
+            text_font(103);
+        }
+        ps2mods_text(none, ART_X + ART_W / 2 - text_width(none) / 2, ART_Y + ART_H / 2 - text_height() / 2, gSelected == 0 ? yellow : dim);
+        text_font(101);
+    }
+
+    // Info.
+    int infoX = ART_X;
+    int y = INFO_Y;
+    text_font(103);
+    ps2mods_text_fit(gInfo.title, infoX, y, ART_W, yellow);
+    y += text_height() + 2;
+    text_font(101);
+    if (gInfo.author[0] != '\0') {
+        ps2mods_text_fit(gInfo.author, infoX, y, ART_W, dim);
+        y += LIST_ROW;
+    }
+    for (int i = 0; i < gInfo.lineCount; i++) {
+        ps2mods_text(gInfo.lines[i], infoX, y, green);
+        y += text_height() + 1;
+    }
+
+    // Notes and buttons.
+    char ask[64];
+    snprintf(ask, sizeof(ask), "Ask at startup: %s", gAskAtStartup ? "Yes" : "No");
+    ps2mods_text("A new mod choice takes effect the next time you start the game.", 24, SCREEN_H - 70, dim);
+
+    const char* use = gSelected == gActive ? "IN USE" : "USE THIS";
+    ps2mods_text(use, 120 - text_width(use) / 2, SCREEN_H - 40, gSelected == gActive ? dim : bright);
+    draw_box(gBuf, SCREEN_W, 120 - 60, SCREEN_H - 46, 120 + 60, SCREEN_H - 22, green);
+    ps2mods_text(ask, 320 - text_width(ask) / 2, SCREEN_H - 40, bright);
+    draw_box(gBuf, SCREEN_W, 320 - 90, SCREEN_H - 46, 320 + 90, SCREEN_H - 22, green);
+    ps2mods_text("BACK", 520 - text_width("BACK") / 2, SCREEN_H - 40, bright);
+    draw_box(gBuf, SCREEN_W, 520 - 60, SCREEN_H - 46, 520 + 60, SCREEN_H - 22, green);
+
+    win_draw(gWin);
+}
+
+static void ps2mods_button(int x, int y, int w, int h, int event)
+{
+    int btn = win_register_button(gWin, x, y, w, h, -1, -1, -1, event, NULL, NULL, NULL, 0);
+    if (btn != -1) {
+        win_register_button_sound_func(btn, gsound_red_butt_press, gsound_red_butt_release);
+    }
+}
+
+static void ps2mods_restart_notice()
+{
+    const int width = 360;
+    const int height = 90;
+    int x = (screenGetWidth() - width) / 2;
+    int y = (screenGetHeight() - height) / 2;
+    int win = win_add(x, y, width, height, colorTable[0], WINDOW_MODAL | WINDOW_MOVE_ON_TOP);
+    if (win == -1) {
+        return;
+    }
+    unsigned char* buf = win_get_buf(win);
+    buf_fill(buf, width, height, width, colorTable[0]);
+    draw_box(buf, width, 0, 0, width - 1, height - 1, colorTable[992]);
+    const char* l1 = "Mod choice saved.";
+    const char* l2 = "Restart the game to play with it.";
+    const char* l3 = "Press any button";
+    text_to_buf(buf + width * 16 + (width - text_width(l1)) / 2, l1, width, width, colorTable[18979]);
+    text_to_buf(buf + width * 36 + (width - text_width(l2)) / 2, l2, width, width, colorTable[992]);
+    text_to_buf(buf + width * 64 + (width - text_width(l3)) / 2, l3, width, width, colorTable[10570]);
+    win_register_button(win, 0, 0, width, height, -1, -1, -1, KEY_RETURN, NULL, NULL, NULL, 0);
+    win_draw(win);
+    while (true) {
+        sharedFpsLimiter.mark();
+        int input = get_input();
+        if (input != -1) {
+            break;
+        }
+        sharedFpsLimiter.throttle();
+    }
+    win_delete(win);
+}
+
+void ps2mods_screen()
+{
+    ps2mods_scan();
+
+    char last[MOD_NAME_SIZE];
+    ps2mods_read_last(last, sizeof(last));
+    gActive = 0;
+    for (int i = 0; i < gModCount; i++) {
+        if (compat_stricmp(gModNames[i], last) == 0) {
+            gActive = i + 1;
+        }
+    }
+
+    int fontSaved = text_curr();
+    text_font(101);
+
+    gWin = win_add((screenGetWidth() - SCREEN_W) / 2, (screenGetHeight() - SCREEN_H) / 2, SCREEN_W, SCREEN_H,
+        colorTable[0], WINDOW_MODAL | WINDOW_MOVE_ON_TOP);
+    if (gWin == -1) {
+        text_font(fontSaved);
+        return;
+    }
+    gBuf = win_get_buf(gWin);
+
+    const int itemCount = gModCount + 1 < LIST_ROWS ? gModCount + 1 : LIST_ROWS;
+    for (int i = 0; i < itemCount; i++) {
+        ps2mods_button(LIST_X - 4, LIST_Y + i * LIST_ROW - 2, LIST_W + 4, LIST_ROW - 1, EVENT_ITEM + i);
+    }
+    ps2mods_button(120 - 60, SCREEN_H - 46, 120, 24, EVENT_USE);
+    ps2mods_button(320 - 90, SCREEN_H - 46, 180, 24, EVENT_ASK);
+    ps2mods_button(520 - 60, SCREEN_H - 46, 120, 24, EVENT_BACK);
+
+    ps2mods_select(gActive);
+    ps2mods_draw();
+
+    while (true) {
+        sharedFpsLimiter.mark();
+        int input = get_input();
+        if (input == KEY_ESCAPE || input == EVENT_BACK) {
+            break;
+        } else if (input >= EVENT_ITEM && input < EVENT_ITEM + itemCount) {
+            int item = input - EVENT_ITEM;
+            if (item != gSelected) {
+                ps2mods_select(item);
+                ps2mods_draw();
+            }
+        } else if (input == KEY_ARROW_UP || input == KEY_ARROW_DOWN) {
+            int item = gSelected + (input == KEY_ARROW_UP ? -1 : 1);
+            if (item >= 0 && item < itemCount) {
+                ps2mods_select(item);
+                ps2mods_draw();
+            }
+        } else if (input == EVENT_USE || input == KEY_RETURN) {
+            if (gSelected != gActive) {
+                gActive = gSelected;
+                ps2mods_write_last(gActive > 0 ? gModNames[gActive - 1] : "", gAskAtStartup);
+                ps2mods_draw();
+                ps2mods_restart_notice();
+                ps2mods_draw();
+            }
+        } else if (input == EVENT_ASK) {
+            ps2mods_write_last(gActive > 0 ? gModNames[gActive - 1] : "", !gAskAtStartup);
+            ps2mods_draw();
+        }
+        sharedFpsLimiter.throttle();
+    }
+
+    win_delete(gWin);
+    gWin = -1;
+    free(gArt);
+    gArt = NULL;
+    text_font(fontSaved);
 }
 
 } // namespace fallout

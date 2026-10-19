@@ -180,11 +180,22 @@ MODS
 ----
 Put each mod in its own folder in mods/ next to MASTER.DAT, laid out like
 the game's DATA folder (mods/MYMOD/ART/..., mods/MYMOD/MAPS/...). Its files
-replace the game's files of the same name. When mods/ has any folders, a
-CHOOSE A MOD menu appears at startup (Original game / each mod); the last
-choice is remembered (mods/LAST.TXT) and highlighted. Loose files only -
-mods that come as a .DAT need unpacking first (tools/f1dat.py). Keep save
-games of different mods in different slots.
+replace the game's files of the same name. Loose files only - mods that come
+as a .DAT need unpacking first (tools/f1dat.py). Keep save games of
+different mods in different slots.
+
+When mods/ has any folders:
+  - a CHOOSE A MOD list appears at startup (Original game / each mod)
+  - the main menu gets a MODS button: the installed mods with their artwork
+    and description, which one is in use, and "Ask at startup" (turn the
+    startup list off to always start with the chosen mod). A new choice
+    takes effect the next time the game starts.
+
+Optional files a mod can include for the MODS screen:
+  mods/MYMOD/PREVIEW.BMP   artwork, any size (shown up to 316x237), 8/24/32-bit BMP
+  mods/MYMOD/MOD.TXT       line 1: name, line 2: author / version,
+                           following lines: description (wrapped to fit)
+The choice is kept in mods/LAST.TXT.
 
 
 ON-SCREEN KEYBOARD (press R3)
