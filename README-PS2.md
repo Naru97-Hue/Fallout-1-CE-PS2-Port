@@ -36,6 +36,7 @@ docker run --rm -v "$PWD:/src" fallout1-ce-ps2 tools/make_dist.sh v0.7  # releas
 Release helpers in tools/:
 - make_dist.sh VERSION: builds, strips and packs dist/VERSION plus a zip (ELF, README, folder layout, no game data)
 - check_no_assets.sh [folder]: fails if any game data is in git or in a release folder
+- emu/setup_play.sh + emu/boot_test.sh: build a headless runner from the open-source Play! emulator (it emulates the BIOS itself, no Sony BIOS needed) and boot FALLOUT.ELF with placeholder data, checking drivers, storage search, video, audio and early init
 - run_smoke.sh: quick pre-release checks (no game data, valid memory card icons, ELF builds)
 
 ## Movies and audio

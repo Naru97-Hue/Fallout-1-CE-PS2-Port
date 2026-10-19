@@ -187,6 +187,9 @@ int game_init(const char* windowTitle, bool isMapper, int font, int flags, int a
 
     initWindow(&video_options, flags);
     palette_init();
+#ifdef __PS2__
+    ps2_log_memory("video ready");
+#endif
 
     if (!game_in_mapper) {
         game_splash_screen();
