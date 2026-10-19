@@ -1252,6 +1252,11 @@ static void ps2map_set_test(GSGLOBAL* gs, int test)
     gsKit_set_test(gs, GS_ATEST_ON);
 }
 
+// Smooth map art (Settings > SYSTEM, at 720p/1080i/zoom): bilinear
+// filtering, with texture coordinates pulled in half a texel so samples
+// never reach the neighbouring images packed next to this one in the atlas.
+static float gUvInset = 0.0f;
+
 static void ps2map_sprite(GSGLOBAL* gs, GSTEXTURE* tex, const Xform* xf, float sx, float sy, const Record* r, u64 color)
 {
     float x1 = sx * xf->ax + xf->bx;
@@ -1259,8 +1264,8 @@ static void ps2map_sprite(GSGLOBAL* gs, GSTEXTURE* tex, const Xform* xf, float s
     float x2 = (sx + r->width) * xf->ax + xf->bx;
     float y2 = (sy + r->height) * xf->ay + xf->by;
     gsKit_prim_sprite_texture(gs, tex,
-        x1, y1, (float)r->u, (float)r->v,
-        x2, y2, (float)(r->u + r->width), (float)(r->v + r->height),
+        x1, y1, (float)r->u + gUvInset, (float)r->v + gUvInset,
+        x2, y2, (float)(r->u + r->width) - gUvInset, (float)(r->v + r->height) - gUvInset,
         0, color);
 }
 
@@ -1395,6 +1400,12 @@ void ps2map_draw(GSGLOBAL* gs, const Ps2MapView* view, SDL_Palette* palette)
     gFrameNo++;
     gArenaUsed = 0;
     gArenaFull = false;
+
+    bool scaled = view->zoomed || view->scaleX != 1.0f || view->scaleY != 1.0f;
+    bool smooth = scaled && ps2controls_smooth_map() && ps2controls_picture_filter() != PS2_FILTER_SHARP;
+    gAtlas.Filter = smooth ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
+    gDyn.Filter = gAtlas.Filter;
+    gUvInset = smooth ? 0.5f : 0.0f;
 
     // display_win 0 would be the screen background: the map window exists
     // only once the map system is up.

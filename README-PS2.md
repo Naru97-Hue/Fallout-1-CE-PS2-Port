@@ -157,7 +157,9 @@ Open it from the main menu (OPTIONS) or in game from the Options menu
             1 or 2, plus TV output (480i/480p/720p/1080i) and the GS renderer
             switches (map, mouse cursor, fades; after restart), picture
             filter (Sharp / Smooth / Soft) and scanlines (Off / Light /
-            Medium / Strong), both applied at once. A new TV
+            Medium / Strong), and "Smooth map at 720p+" (experimental:
+            also smooths the GS-drawn map when the picture is scaled),
+            all applied at once. A new TV
             output must be confirmed (YES) within 6 seconds, otherwise it
             switches back by itself - so a TV that can't show it is safe.
 From the main menu there are also GAME PREFS (the game's own preferences)

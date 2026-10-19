@@ -137,6 +137,7 @@ typedef struct Settings {
     int saveLocation; // SAVE_LOCATION_*
     int filter; // PS2_FILTER_*
     int scanlines; // 0 off .. 3 strong
+    bool smoothMap; // bilinear map art at 720p/1080i/zoom
 } Settings;
 
 enum {
@@ -202,6 +203,7 @@ static void ps2controls_defaults(Settings* settings)
     settings->saveLocation = SAVE_LOCATION_GAME_FOLDER;
     settings->filter = PS2_FILTER_SMOOTH;
     settings->scanlines = 0;
+    settings->smoothMap = false;
     // PADNAV.OFF (older builds) still turns D-pad navigation off by default.
     FILE* stream = fopen("PADNAV.OFF", "rb");
     settings->dpadNavigation = stream == NULL;
@@ -284,6 +286,9 @@ void ps2controls_load()
             if (config_get_value(&config, "video", "scanlines", &value) && value >= 0 && value <= 3) {
                 gSettings.scanlines = value;
             }
+            if (config_get_value(&config, "video", "smooth_map", &value)) {
+                gSettings.smoothMap = value != 0;
+            }
             if (config_get_value(&config, "saves", "location", &value) && value >= 0 && value < SAVE_LOCATION_COUNT) {
                 gSettings.saveLocation = value;
             }
@@ -331,6 +336,7 @@ static void ps2controls_save()
     SAVE_IF(gSettings.saveLocation != def.saveLocation, "saves", "location", gSettings.saveLocation);
     SAVE_IF(gSettings.filter != def.filter, "video", "filter", gSettings.filter);
     SAVE_IF(gSettings.scanlines != def.scanlines, "video", "scanlines", gSettings.scanlines);
+    SAVE_IF(gSettings.smoothMap != def.smoothMap, "video", "smooth_map", gSettings.smoothMap ? 1 : 0);
 #undef SAVE_IF
 
     if (changed == 0) {
@@ -417,6 +423,12 @@ int ps2controls_picture_filter()
     return gSettings.filter;
 }
 
+bool ps2controls_smooth_map()
+{
+    ps2controls_load();
+    return gSettings.smoothMap;
+}
+
 int ps2controls_scanlines()
 {
     ps2controls_load();
@@ -477,6 +489,7 @@ enum {
     ROW_SAVE_LOCATION,
     ROW_FILTER,
     ROW_SCANLINES,
+    ROW_SMOOTH_MAP,
 };
 
 typedef struct Row {
@@ -619,6 +632,10 @@ static void ps2controls_row_text(int rowIndex, char* label, char* value, size_t 
         snprintf(value, size, "%s", kLevels[gSettings.scanlines]);
         break;
     }
+    case ROW_SMOOTH_MAP:
+        snprintf(label, size, "Smooth map at 720p+");
+        snprintf(value, size, "%s", gSettings.smoothMap ? "On (experimental)" : "Off");
+        break;
     case ROW_SAVE_LOCATION:
         snprintf(label, size, "Save / load games on");
         snprintf(value, size, "%s%s", kSaveNames[gSettings.saveLocation],
@@ -732,6 +749,9 @@ static void ps2controls_change(int rowIndex, int step)
         break;
     case ROW_SCANLINES:
         gSettings.scanlines = (gSettings.scanlines + step + 4) % 4;
+        break;
+    case ROW_SMOOTH_MAP:
+        gSettings.smoothMap = !gSettings.smoothMap;
         break;
     case ROW_SAVE_LOCATION:
         gSettings.saveLocation = (gSettings.saveLocation + step + SAVE_LOCATION_COUNT) % SAVE_LOCATION_COUNT;
@@ -1086,8 +1106,8 @@ static void ps2controls_draw()
         ps2controls_draw_keyboard();
     } else if (gTab == TAB_VIDEO) {
         ps2controls_text("DISPLAY", 30, CONTENT_TOP, gYellow);
-        ps2controls_text("New TV output: confirm within 6 s or it switches back.", 30, CONTENT_TOP + 124, gDim);
-        ps2controls_text("GS options apply after a restart; picture options at once.", 30, CONTENT_TOP + 140, gDim);
+        ps2controls_text("New TV output: confirm within 6 s or it switches back.", 30, CONTENT_TOP + 142, gDim);
+        ps2controls_text("GS options apply after a restart; picture options at once.", 30, CONTENT_TOP + 158, gDim);
         ps2controls_text("SAVE GAMES", 30, CONTENT_TOP + 183, gYellow);
         ps2controls_text("Used by both the save and the load screen. Memory card saves get", 30, CONTENT_TOP + 226, gDim);
         ps2controls_text("one folder per slot, with its own icon in the PS2 browser.", 30, CONTENT_TOP + 240, gDim);
@@ -1223,6 +1243,8 @@ static bool ps2controls_open_window()
         ps2controls_add_row(ROW_FILTER, 0, 30, y, 420);
         y += ROW_HEIGHT;
         ps2controls_add_row(ROW_SCANLINES, 0, 30, y, 420);
+        y += ROW_HEIGHT;
+        ps2controls_add_row(ROW_SMOOTH_MAP, 0, 30, y, 420);
         ps2controls_add_row(ROW_SAVE_LOCATION, 0, 30, CONTENT_TOP + 200, 560);
     }
 
@@ -1300,12 +1322,14 @@ void ps2controls_screen(bool fromMainMenu)
             int location = gSettings.saveLocation;
             int filter = gSettings.filter;
             int scanlines = gSettings.scanlines;
+            bool smoothMap = gSettings.smoothMap;
             ps2controls_defaults(&gSettings);
             if (gTab != TAB_VIDEO) {
                 memcpy(gSettings.video, video, sizeof(video)); // only reset what's on screen
                 gSettings.saveLocation = location;
                 gSettings.filter = filter;
                 gSettings.scanlines = scanlines;
+                gSettings.smoothMap = smoothMap;
             }
             ps2controls_apply_save_location(gSettings.saveLocation);
             ps2controls_draw();

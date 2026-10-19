@@ -56,6 +56,7 @@ enum {
 };
 int ps2controls_picture_filter();
 int ps2controls_scanlines(); // 0 off, 1 light, 2 medium, 3 strong
+bool ps2controls_smooth_map(); // also smooth the GS-drawn map when scaled
 
 // A memory card save had to go to the game folder: show that in Settings.
 void ps2controls_save_location_fell_back();
