@@ -20,7 +20,6 @@
 
 #ifdef __PS2__
 #include "plib/gnw/ps2controls.h"
-#include "plib/gnw/ps2mods.h"
 #endif
 
 namespace fallout {
@@ -37,8 +36,6 @@ typedef enum MainMenuButton {
 #ifdef __PS2__
     // The empty sixth slot in the menu art.
     MAIN_MENU_BUTTON_OPTIONS,
-    // Below the menu art.
-    MAIN_MENU_BUTTON_MODS,
 #endif
     MAIN_MENU_BUTTON_COUNT,
 } MainMenuButton;
@@ -79,7 +76,6 @@ static int button_values[MAIN_MENU_BUTTON_COUNT] = {
     KEY_LOWERCASE_E,
 #ifdef __PS2__
     KEY_LOWERCASE_O,
-    KEY_LOWERCASE_M,
 #endif
 };
 
@@ -92,7 +88,6 @@ static int return_values[MAIN_MENU_BUTTON_COUNT] = {
     MAIN_MENU_EXIT,
 #ifdef __PS2__
     MAIN_MENU_OPTIONS,
-    MAIN_MENU_MODS,
 #endif
 };
 
@@ -194,29 +189,6 @@ int main_menu_create()
     }
 
     for (int index = 0; index < MAIN_MENU_BUTTON_COUNT; index++) {
-#ifdef __PS2__
-        if (index == MAIN_MENU_BUTTON_MODS) {
-            // Make the menu panel one slot taller: move its bottom edge
-            // down a slot, then repeat the OPTIONS slot (plate, screws)
-            // in the gap, so MODS looks like the other buttons.
-            const int pitch = 41;
-            const int slotTop = (index - 1) * pitch + 40; // OPTIONS slot
-            const int edgeTop = slotTop + pitch; // the panel's bottom edge
-            const int edgeHeight = 20;
-            const int left = 392;
-            const int right = 628;
-            for (int y = edgeHeight - 1; y >= 0; y--) {
-                memmove(main_window_buf + MAIN_MENU_WINDOW_WIDTH * (edgeTop + pitch + y) + left,
-                    main_window_buf + MAIN_MENU_WINDOW_WIDTH * (edgeTop + y) + left,
-                    right - left);
-            }
-            for (int y = 0; y < pitch; y++) {
-                memcpy(main_window_buf + MAIN_MENU_WINDOW_WIDTH * (edgeTop + y) + left,
-                    main_window_buf + MAIN_MENU_WINDOW_WIDTH * (slotTop + y) + left,
-                    right - left);
-            }
-        }
-#endif
         buttons[index] = win_register_button(main_window,
             425,
             index * 42 - index + 45,
@@ -243,11 +215,8 @@ int main_menu_create()
     for (int index = 0; index < MAIN_MENU_BUTTON_COUNT; index++) {
         msg.num = 9 + index;
 #ifdef __PS2__
-        if (index == MAIN_MENU_BUTTON_OPTIONS || index == MAIN_MENU_BUTTON_MODS) {
-            if (buttons[index] == -1) {
-                continue;
-            }
-            const char* text = index == MAIN_MENU_BUTTON_MODS ? "MODS" : "OPTIONS";
+        if (index == MAIN_MENU_BUTTON_OPTIONS) {
+            const char* text = "OPTIONS";
             len = text_width(text);
             text_to_buf(main_window_buf + MAIN_MENU_WINDOW_WIDTH * (42 * index - index + 46) + 520 - (len / 2),
                 text,
@@ -401,15 +370,6 @@ int main_menu_loop()
 
                 rc = return_values[buttonIndex];
 #ifdef __PS2__
-                if (rc == MAIN_MENU_MODS) {
-                    if (buttons[buttonIndex] != -1) {
-                        ps2mods_screen();
-                        win_draw(main_window);
-                        tick = get_time();
-                    }
-                    rc = -1;
-                    break;
-                }
                 if (rc == MAIN_MENU_OPTIONS) {
                     // Settings (controls, video, game preferences) right here.
                     ps2controls_screen(true);

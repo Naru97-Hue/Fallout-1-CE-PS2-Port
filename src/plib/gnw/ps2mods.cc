@@ -16,7 +16,11 @@
 #include "plib/gnw/svga.h"
 #include "plib/gnw/text.h"
 #include "fps_limiter.h"
+#include "game/art.h"
 #include "game/gsound.h"
+#include "game/skill.h"
+#include "game/skill_defs.h"
+#include "game/object_types.h"
 #include "plib/gnw/button.h"
 #include "plib/gnw/gnw.h"
 #include "plib/gnw/grbuf.h"
@@ -366,6 +370,31 @@ static void ps2mods_text_fit(const char* text, int x, int y, int maxWidth, int c
     ps2mods_text(fit, x, y, color);
 }
 
+// Vault Boy with a wrench (the Repair skill picture), centred on cx.
+static void ps2mods_draw_vault_boy(int cx, int y)
+{
+    CacheEntry* handle;
+    int width;
+    int height;
+    int fid = art_id(OBJ_TYPE_SKILLDEX, skill_pic(SKILL_REPAIR), 0, 0, 0);
+    unsigned char* data = art_lock(fid, &handle, &width, &height);
+    if (data == NULL) {
+        return;
+    }
+    int x = cx - width / 2;
+    for (int row = 0; row < height && y + row < ART_Y + ART_H; row++) {
+        unsigned char* dest = gBuf + SCREEN_W * (y + row);
+        const unsigned char* src = data + row * width;
+        for (int col = 0; col < width; col++) {
+            int dx = x + col;
+            if (src[col] != 0 && dx >= ART_X && dx < ART_X + ART_W) {
+                dest[dx] = src[col];
+            }
+        }
+    }
+    art_ptr_unlock(handle);
+}
+
 static void ps2mods_draw()
 {
     const int green = colorTable[992];
@@ -403,6 +432,8 @@ static void ps2mods_draw()
         int ox = ART_X + (ART_W - gArtW) / 2;
         int oy = ART_Y + (ART_H - gArtH) / 2;
         buf_to_buf(gArt, gArtW, gArtH, gArtW, gBuf + SCREEN_W * oy + ox, SCREEN_W);
+    } else if (gModCount == 0) {
+        ps2mods_draw_vault_boy(ART_X + ART_W / 2, ART_Y + 6);
     } else {
         const char* none = gSelected == 0 ? "FALLOUT" : "No artwork (PREVIEW.BMP)";
         if (gSelected == 0) {

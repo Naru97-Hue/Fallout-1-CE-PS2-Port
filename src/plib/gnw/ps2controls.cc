@@ -34,6 +34,7 @@
 #include "plib/gnw/input.h"
 #include "plib/gnw/kb.h"
 #include "plib/gnw/mouse.h"
+#include "plib/gnw/ps2mods.h"
 #include "plib/gnw/ps2video.h"
 #include "plib/gnw/svga.h"
 #include "plib/gnw/text.h"
@@ -474,6 +475,7 @@ typedef struct Row {
 #define EVENT_DEFAULTS 1301
 #define EVENT_CANCEL 1302
 #define EVENT_PREFS 1303
+#define EVENT_MODS 1304
 #define EVENT_TAB 1310
 
 static Row gRows[MAX_ROWS];
@@ -1074,10 +1076,11 @@ static void ps2controls_draw()
 
     text_font(103);
     if (gFromMainMenu) {
-        ps2controls_text_centered("DONE", 100, SCREEN_HEIGHT - 42, gYellow);
-        ps2controls_text_centered("GAME PREFS", 250, SCREEN_HEIGHT - 42, gYellow);
-        ps2controls_text_centered("DEFAULTS", 410, SCREEN_HEIGHT - 42, gYellow);
-        ps2controls_text_centered("CANCEL", 545, SCREEN_HEIGHT - 42, gYellow);
+        ps2controls_text_centered("DONE", 72, SCREEN_HEIGHT - 42, gYellow);
+        ps2controls_text_centered("GAME PREFS", 196, SCREEN_HEIGHT - 42, gYellow);
+        ps2controls_text_centered("MODS", 318, SCREEN_HEIGHT - 42, gYellow);
+        ps2controls_text_centered("DEFAULTS", 436, SCREEN_HEIGHT - 42, gYellow);
+        ps2controls_text_centered("CANCEL", 562, SCREEN_HEIGHT - 42, gYellow);
     } else {
         ps2controls_text_centered("DONE", 150, SCREEN_HEIGHT - 42, gYellow);
         ps2controls_text_centered("DEFAULTS", 320, SCREEN_HEIGHT - 42, gYellow);
@@ -1170,10 +1173,11 @@ static bool ps2controls_open_window()
     }
 
     if (gFromMainMenu) {
-        ps2controls_add_button(100, 90, EVENT_DONE);
-        ps2controls_add_button(250, 150, EVENT_PREFS);
-        ps2controls_add_button(410, 130, EVENT_DEFAULTS);
-        ps2controls_add_button(545, 110, EVENT_CANCEL);
+        ps2controls_add_button(72, 84, EVENT_DONE);
+        ps2controls_add_button(196, 148, EVENT_PREFS);
+        ps2controls_add_button(318, 80, EVENT_MODS);
+        ps2controls_add_button(436, 122, EVENT_DEFAULTS);
+        ps2controls_add_button(562, 104, EVENT_CANCEL);
     } else {
         ps2controls_add_button(150, 100, EVENT_DONE);
         ps2controls_add_button(320, 140, EVENT_DEFAULTS);
@@ -1248,6 +1252,13 @@ void ps2controls_screen(bool fromMainMenu)
             }
             ps2controls_apply_save_location(gSettings.saveLocation);
             ps2controls_draw();
+        } else if (input == EVENT_MODS && gFromMainMenu) {
+            ps2controls_close_window();
+            ps2mods_screen();
+            text_font(101);
+            if (!ps2controls_open_window()) {
+                break;
+            }
         } else if (input == EVENT_PREFS && gFromMainMenu) {
             ps2controls_close_window();
             options_preferences();
