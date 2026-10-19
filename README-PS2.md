@@ -159,7 +159,7 @@ Open it from the main menu (OPTIONS) or in game from the Options menu
             output must be confirmed (YES) within 6 seconds, otherwise it
             switches back by itself - so a TV that can't show it is safe.
 From the main menu there are also GAME PREFS (the game's own preferences)
-and MODS (see MODS below).
+and a MODS tab (see MODS below).
 Click or press Cross on a line to change it, right-click or Circle to step
 back; for a keyboard hotkey, click it and press the new key. D-pad moves
 between lines and tabs. DONE saves to CONTROLS.CFG next to FALLOUT.ELF,
@@ -185,7 +185,7 @@ replace the game's files of the same name. Loose files only - mods that come
 as a .DAT need unpacking first (tools/f1dat.py). Keep save games of
 different mods in different slots.
 
-The MODS screen is in the main menu's OPTIONS (MODS button at the bottom).
+The MODS screen is the MODS tab in the settings (OPTIONS) screen.
 With no mods installed it shows how to add one. When mods/ has any folders:
   - a CHOOSE A MOD list appears at startup (Original game / each mod)
   - OPTIONS > MODS lists the installed mods with their artwork

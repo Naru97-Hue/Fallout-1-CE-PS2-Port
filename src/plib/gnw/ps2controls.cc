@@ -1019,7 +1019,9 @@ static void ps2controls_draw()
 
     // Tab bar.
     text_font(101);
-    int tabWidth = (SCREEN_WIDTH - 40) / TAB_COUNT;
+    // Plus a fifth "tab", MODS, which opens the mods screen.
+    int tabWidth = (SCREEN_WIDTH - 40) / (TAB_COUNT + 1);
+    ps2controls_text_centered("MODS", 20 + TAB_COUNT * tabWidth + tabWidth / 2, 51, gGreen);
     for (int t = 0; t < TAB_COUNT; t++) {
         int x = 20 + t * tabWidth;
         if (t == gTab) {
@@ -1076,11 +1078,10 @@ static void ps2controls_draw()
 
     text_font(103);
     if (gFromMainMenu) {
-        ps2controls_text_centered("DONE", 72, SCREEN_HEIGHT - 42, gYellow);
-        ps2controls_text_centered("GAME PREFS", 196, SCREEN_HEIGHT - 42, gYellow);
-        ps2controls_text_centered("MODS", 318, SCREEN_HEIGHT - 42, gYellow);
-        ps2controls_text_centered("DEFAULTS", 436, SCREEN_HEIGHT - 42, gYellow);
-        ps2controls_text_centered("CANCEL", 562, SCREEN_HEIGHT - 42, gYellow);
+        ps2controls_text_centered("DONE", 100, SCREEN_HEIGHT - 42, gYellow);
+        ps2controls_text_centered("GAME PREFS", 250, SCREEN_HEIGHT - 42, gYellow);
+        ps2controls_text_centered("DEFAULTS", 410, SCREEN_HEIGHT - 42, gYellow);
+        ps2controls_text_centered("CANCEL", 545, SCREEN_HEIGHT - 42, gYellow);
     } else {
         ps2controls_text_centered("DONE", 150, SCREEN_HEIGHT - 42, gYellow);
         ps2controls_text_centered("DEFAULTS", 320, SCREEN_HEIGHT - 42, gYellow);
@@ -1132,7 +1133,13 @@ static bool ps2controls_open_window()
     gCaptureRow = -1;
     gCapturing = false;
 
-    int tabWidth = (SCREEN_WIDTH - 40) / TAB_COUNT;
+    int tabWidth = (SCREEN_WIDTH - 40) / (TAB_COUNT + 1);
+    {
+        int btn = win_register_button(gWindow, 20 + TAB_COUNT * tabWidth + 4, 46, tabWidth - 8, 19, -1, -1, -1, EVENT_MODS, NULL, NULL, NULL, 0);
+        if (btn != -1) {
+            win_register_button_sound_func(btn, gsound_med_butt_press, gsound_med_butt_release);
+        }
+    }
     for (int t = 0; t < TAB_COUNT; t++) {
         int btn = win_register_button(gWindow, 20 + t * tabWidth + 4, 46, tabWidth - 8, 19, -1, -1, -1, EVENT_TAB + t, NULL, NULL, NULL, 0);
         if (btn != -1) {
@@ -1173,11 +1180,10 @@ static bool ps2controls_open_window()
     }
 
     if (gFromMainMenu) {
-        ps2controls_add_button(72, 84, EVENT_DONE);
-        ps2controls_add_button(196, 148, EVENT_PREFS);
-        ps2controls_add_button(318, 80, EVENT_MODS);
-        ps2controls_add_button(436, 122, EVENT_DEFAULTS);
-        ps2controls_add_button(562, 104, EVENT_CANCEL);
+        ps2controls_add_button(100, 90, EVENT_DONE);
+        ps2controls_add_button(250, 150, EVENT_PREFS);
+        ps2controls_add_button(410, 130, EVENT_DEFAULTS);
+        ps2controls_add_button(545, 110, EVENT_CANCEL);
     } else {
         ps2controls_add_button(150, 100, EVENT_DONE);
         ps2controls_add_button(320, 140, EVENT_DEFAULTS);
@@ -1252,7 +1258,7 @@ void ps2controls_screen(bool fromMainMenu)
             }
             ps2controls_apply_save_location(gSettings.saveLocation);
             ps2controls_draw();
-        } else if (input == EVENT_MODS && gFromMainMenu) {
+        } else if (input == EVENT_MODS) {
             ps2controls_close_window();
             ps2mods_screen();
             text_font(101);
