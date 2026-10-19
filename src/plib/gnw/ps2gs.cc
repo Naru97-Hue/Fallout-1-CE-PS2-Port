@@ -740,16 +740,22 @@ bool ps2gs_present(SDL_Renderer* renderer, SDL_Surface* screen8, int screenWidth
         ps2map_draw(gs, &view, screen8->format->palette);
     }
 
+    // Picture filter (Settings > SYSTEM): Sharp = nearest everywhere;
+    // Smooth = bilinear only where the picture is scaled; Soft = bilinear
+    // sampled half a pixel off, a light 2x2 blend even at 1:1 (CRT-like).
+    int filter = ps2controls_picture_filter();
+    bool scaled = !(scaleX == 1.0f && scaleY == 1.0f);
+    float soft = filter == PS2_FILTER_SOFT ? 0.5f : 0.0f;
     if (zoomed) {
-        gFrame.Filter = GS_FILTER_LINEAR;
-        ps2gs_draw(gs, (float)mapSrc.x, (float)mapSrc.y, (float)mapSrc.w, (float)mapSrc.h,
+        gFrame.Filter = filter == PS2_FILTER_SHARP ? GS_FILTER_NEAREST : GS_FILTER_LINEAR;
+        ps2gs_draw(gs, (float)mapSrc.x + soft, (float)mapSrc.y + soft, (float)mapSrc.w, (float)mapSrc.h,
             0.0f, 0.0f, screenWidth * scaleX, mapHeight * scaleY);
-        gFrame.Filter = GS_FILTER_NEAREST;
-        ps2gs_draw(gs, 0.0f, (float)mapHeight, (float)screenWidth, (float)(screenHeight - mapHeight),
+        gFrame.Filter = filter == PS2_FILTER_SOFT ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
+        ps2gs_draw(gs, soft, (float)mapHeight + soft, (float)screenWidth, (float)(screenHeight - mapHeight),
             0.0f, mapHeight * scaleY, screenWidth * scaleX, (screenHeight - mapHeight) * scaleY);
     } else {
-        gFrame.Filter = (scaleX == 1.0f && scaleY == 1.0f) ? GS_FILTER_NEAREST : GS_FILTER_LINEAR;
-        ps2gs_draw(gs, 0.0f, 0.0f, (float)screenWidth, (float)screenHeight,
+        gFrame.Filter = filter == PS2_FILTER_SOFT || (filter == PS2_FILTER_SMOOTH && scaled) ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
+        ps2gs_draw(gs, soft, soft, (float)screenWidth, (float)screenHeight,
             0.0f, 0.0f, screenWidth * scaleX, screenHeight * scaleY);
     }
 
@@ -757,6 +763,25 @@ bool ps2gs_present(SDL_Renderer* renderer, SDL_Surface* screen8, int screenWidth
     if (ps2gs_cursor_enabled()) {
         gCursor.Filter = gFrame.Filter;
         ps2gs_draw_cursor(gs, scaleX, scaleY, zoomed, &mapSrc, mapHeight, screenWidth);
+    }
+
+    // Scanlines: darken every other line of the 640x480 picture (in TV
+    // pixels: a band one picture-line tall every two lines), by 25/50/75%.
+    int scanlines = ps2controls_scanlines();
+    if (scanlines > 0) {
+        static const int kAlpha[4] = { 0, 0x20, 0x40, 0x60 };
+        gsKit_set_test(gs, GS_ATEST_OFF);
+        gsKit_set_primalpha(gs, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
+        gs->PrimAlphaEnable = GS_SETTING_ON;
+        u64 color = GS_SETREG_RGBAQ(0, 0, 0, kAlpha[scanlines], 0x00);
+        float band = scaleY < 1.0f ? 1.0f : scaleY;
+        for (int row = 1; row < screenHeight; row += 2) {
+            float y = row * scaleY;
+            gsKit_prim_sprite(gs, 0.0f, y, (float)gs->Width, y + band, 0, color);
+        }
+        if (holes) {
+            gsKit_set_test(gs, GS_ATEST_ON);
+        }
     }
 
     if (gFadeLevel < 0x80) {

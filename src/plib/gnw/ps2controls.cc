@@ -135,6 +135,8 @@ typedef struct Settings {
     bool dpadNavigation;
     bool video[PS2_VIDEO_SETTING_COUNT];
     int saveLocation; // SAVE_LOCATION_*
+    int filter; // PS2_FILTER_*
+    int scanlines; // 0 off .. 3 strong
 } Settings;
 
 enum {
@@ -198,6 +200,8 @@ static void ps2controls_defaults(Settings* settings)
         settings->video[i] = true;
     }
     settings->saveLocation = SAVE_LOCATION_GAME_FOLDER;
+    settings->filter = PS2_FILTER_SMOOTH;
+    settings->scanlines = 0;
     // PADNAV.OFF (older builds) still turns D-pad navigation off by default.
     FILE* stream = fopen("PADNAV.OFF", "rb");
     settings->dpadNavigation = stream == NULL;
@@ -274,6 +278,12 @@ void ps2controls_load()
                     gSettings.video[i] = value != 0;
                 }
             }
+            if (config_get_value(&config, "video", "filter", &value) && value >= 0 && value < PS2_FILTER_COUNT) {
+                gSettings.filter = value;
+            }
+            if (config_get_value(&config, "video", "scanlines", &value) && value >= 0 && value <= 3) {
+                gSettings.scanlines = value;
+            }
             if (config_get_value(&config, "saves", "location", &value) && value >= 0 && value < SAVE_LOCATION_COUNT) {
                 gSettings.saveLocation = value;
             }
@@ -319,6 +329,8 @@ static void ps2controls_save()
         SAVE_IF(gSettings.video[i] != def.video[i], "video", kVideoKeys[i], gSettings.video[i] ? 1 : 0);
     }
     SAVE_IF(gSettings.saveLocation != def.saveLocation, "saves", "location", gSettings.saveLocation);
+    SAVE_IF(gSettings.filter != def.filter, "video", "filter", gSettings.filter);
+    SAVE_IF(gSettings.scanlines != def.scanlines, "video", "scanlines", gSettings.scanlines);
 #undef SAVE_IF
 
     if (changed == 0) {
@@ -399,6 +411,18 @@ bool ps2controls_video_setting(int setting)
     return gSettings.video[setting];
 }
 
+int ps2controls_picture_filter()
+{
+    ps2controls_load();
+    return gSettings.filter;
+}
+
+int ps2controls_scanlines()
+{
+    ps2controls_load();
+    return gSettings.scanlines;
+}
+
 bool ps2controls_dpad_navigation()
 {
     ps2controls_load();
@@ -451,6 +475,8 @@ enum {
     ROW_TV_MODE,
     ROW_VIDEO_SETTING,
     ROW_SAVE_LOCATION,
+    ROW_FILTER,
+    ROW_SCANLINES,
 };
 
 typedef struct Row {
@@ -581,6 +607,18 @@ static void ps2controls_row_text(int rowIndex, char* label, char* value, size_t 
         snprintf(label, size, "%s", kVideoNames[row->index]);
         snprintf(value, size, "%s", gSettings.video[row->index] ? "On" : "Off (EE draws it)");
         break;
+    case ROW_FILTER: {
+        static const char* kFilters[PS2_FILTER_COUNT] = { "Sharp (pixels)", "Smooth (when scaled)", "Soft (CRT-like)" };
+        snprintf(label, size, "Picture filter");
+        snprintf(value, size, "%s", kFilters[gSettings.filter]);
+        break;
+    }
+    case ROW_SCANLINES: {
+        static const char* kLevels[4] = { "Off", "Light", "Medium", "Strong" };
+        snprintf(label, size, "Scanlines");
+        snprintf(value, size, "%s", kLevels[gSettings.scanlines]);
+        break;
+    }
     case ROW_SAVE_LOCATION:
         snprintf(label, size, "Save / load games on");
         snprintf(value, size, "%s%s", kSaveNames[gSettings.saveLocation],
@@ -688,6 +726,12 @@ static void ps2controls_change(int rowIndex, int step)
         break;
     case ROW_VIDEO_SETTING:
         gSettings.video[row->index] = !gSettings.video[row->index];
+        break;
+    case ROW_FILTER:
+        gSettings.filter = (gSettings.filter + step + PS2_FILTER_COUNT) % PS2_FILTER_COUNT;
+        break;
+    case ROW_SCANLINES:
+        gSettings.scanlines = (gSettings.scanlines + step + 4) % 4;
         break;
     case ROW_SAVE_LOCATION:
         gSettings.saveLocation = (gSettings.saveLocation + step + SAVE_LOCATION_COUNT) % SAVE_LOCATION_COUNT;
@@ -1042,9 +1086,8 @@ static void ps2controls_draw()
         ps2controls_draw_keyboard();
     } else if (gTab == TAB_VIDEO) {
         ps2controls_text("DISPLAY", 30, CONTENT_TOP, gYellow);
-        ps2controls_text("A new TV output must be confirmed within", 30, CONTENT_TOP + 96, gDim);
-        ps2controls_text("6 seconds or it switches back by itself.", 30, CONTENT_TOP + 110, gDim);
-        ps2controls_text("GS options apply after restarting the game.", 30, CONTENT_TOP + 128, gDim);
+        ps2controls_text("New TV output: confirm within 6 s or it switches back.", 30, CONTENT_TOP + 124, gDim);
+        ps2controls_text("GS options apply after a restart; picture options at once.", 30, CONTENT_TOP + 140, gDim);
         ps2controls_text("SAVE GAMES", 30, CONTENT_TOP + 183, gYellow);
         ps2controls_text("Used by both the save and the load screen. Memory card saves get", 30, CONTENT_TOP + 226, gDim);
         ps2controls_text("one folder per slot, with its own icon in the PS2 browser.", 30, CONTENT_TOP + 240, gDim);
@@ -1176,6 +1219,10 @@ static bool ps2controls_open_window()
             y += ROW_HEIGHT;
             ps2controls_add_row(ROW_VIDEO_SETTING, i, 30, y, 420);
         }
+        y += ROW_HEIGHT;
+        ps2controls_add_row(ROW_FILTER, 0, 30, y, 420);
+        y += ROW_HEIGHT;
+        ps2controls_add_row(ROW_SCANLINES, 0, 30, y, 420);
         ps2controls_add_row(ROW_SAVE_LOCATION, 0, 30, CONTENT_TOP + 200, 560);
     }
 
@@ -1251,10 +1298,14 @@ void ps2controls_screen(bool fromMainMenu)
             bool video[PS2_VIDEO_SETTING_COUNT];
             memcpy(video, gSettings.video, sizeof(video));
             int location = gSettings.saveLocation;
+            int filter = gSettings.filter;
+            int scanlines = gSettings.scanlines;
             ps2controls_defaults(&gSettings);
             if (gTab != TAB_VIDEO) {
                 memcpy(gSettings.video, video, sizeof(video)); // only reset what's on screen
                 gSettings.saveLocation = location;
+                gSettings.filter = filter;
+                gSettings.scanlines = scanlines;
             }
             ps2controls_apply_save_location(gSettings.saveLocation);
             ps2controls_draw();

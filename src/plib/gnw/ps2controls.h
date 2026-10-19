@@ -47,6 +47,16 @@ enum {
 };
 bool ps2controls_video_setting(int setting);
 
+// Picture options, applied right away.
+enum {
+    PS2_FILTER_SHARP, // nearest: crisp pixels
+    PS2_FILTER_SMOOTH, // bilinear when the picture is scaled (720p/1080i/zoom)
+    PS2_FILTER_SOFT, // always slightly blended, like a CRT
+    PS2_FILTER_COUNT,
+};
+int ps2controls_picture_filter();
+int ps2controls_scanlines(); // 0 off, 1 light, 2 medium, 3 strong
+
 // A memory card save had to go to the game folder: show that in Settings.
 void ps2controls_save_location_fell_back();
 
