@@ -166,6 +166,10 @@ int main_menu_create()
     // Version.
     char version[VERSION_MAX];
     getverstr(version, sizeof(version));
+#ifdef __PS2__
+    // Which PS2 build this is (handy when checking a copied ELF).
+    strncat(version, " - PS2 v0.7", sizeof(version) - strlen(version) - 1);
+#endif
     len = text_width(version);
     win_print(main_window, version, 0, 615 - len, 460, colorTable[21204] | 0x4000000 | 0x2000000);
 
@@ -192,14 +196,24 @@ int main_menu_create()
     for (int index = 0; index < MAIN_MENU_BUTTON_COUNT; index++) {
 #ifdef __PS2__
         if (index == MAIN_MENU_BUTTON_MODS) {
-            // A dark plate behind the extra button, which sits below the art.
-            int top = index * 42 - index + 40;
-            for (int y = top; y < top + 36 && y < MAIN_MENU_WINDOW_HEIGHT; y++) {
-                unsigned char* row = main_window_buf + MAIN_MENU_WINDOW_WIDTH * y;
-                for (int x = 415; x < 625; x++) {
-                    bool edge = y == top || y == top + 35 || x == 415 || x == 624;
-                    row[x] = edge ? colorTable[10570] : colorTable[0];
-                }
+            // Make the menu panel one slot taller: move its bottom edge
+            // down a slot, then repeat the OPTIONS slot (plate, screws)
+            // in the gap, so MODS looks like the other buttons.
+            const int pitch = 41;
+            const int slotTop = (index - 1) * pitch + 40; // OPTIONS slot
+            const int edgeTop = slotTop + pitch; // the panel's bottom edge
+            const int edgeHeight = 20;
+            const int left = 392;
+            const int right = 628;
+            for (int y = edgeHeight - 1; y >= 0; y--) {
+                memmove(main_window_buf + MAIN_MENU_WINDOW_WIDTH * (edgeTop + pitch + y) + left,
+                    main_window_buf + MAIN_MENU_WINDOW_WIDTH * (edgeTop + y) + left,
+                    right - left);
+            }
+            for (int y = 0; y < pitch; y++) {
+                memcpy(main_window_buf + MAIN_MENU_WINDOW_WIDTH * (edgeTop + y) + left,
+                    main_window_buf + MAIN_MENU_WINDOW_WIDTH * (slotTop + y) + left,
+                    right - left);
             }
         }
 #endif
