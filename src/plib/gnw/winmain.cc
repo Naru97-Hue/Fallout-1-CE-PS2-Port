@@ -17,6 +17,7 @@
 #include "plib/gnw/debug.h"
 #ifdef __PS2__
 #include "plib/gnw/ps2crash.h"
+#include "plib/gnw/ps2storage.h"
 #endif
 #include "plib/gnw/gnw.h"
 #include "plib/gnw/svga.h"
@@ -39,23 +40,6 @@ HANDLE GNW95_mutex = NULL;
 char GNW95_title[256];
 
 #ifdef __PS2__
-static bool ps2_has_master_dat(const char* dir)
-{
-    static const char* names[] = { "MASTER.DAT", "master.dat", "Master.dat" };
-    char path[512];
-    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
-        snprintf(path, sizeof(path), "%s%s", dir, names[i]);
-        FILE* stream = fopen(path, "rb");
-        if (stream != NULL) {
-            fclose(stream);
-            printf("fallout-ce PS2: found %s\n", path);
-            return true;
-        }
-    }
-    printf("fallout-ce PS2: no MASTER.DAT in '%s'\n", dir);
-    return false;
-}
-
 // Locates the folder holding MASTER.DAT and makes it the working directory.
 // Order: the ELF's own folder, the current directory, then common locations.
 static void ps2_find_data_dir(int argc, char** argv)
@@ -87,35 +71,21 @@ static void ps2_find_data_dir(int argc, char** argv)
     snprintf(cwdDir, sizeof(cwdDir), "%s%s", cwd,
         (cwdLength > 0 && cwd[cwdLength - 1] != '/' && cwd[cwdLength - 1] != ':') ? "/" : "");
 
-    const char* candidates[] = {
-        elfDir,
-        cwdDir,
-        "host:",
-        "mass:/FALLOUT/",
-        "mass:/",
-        "mass0:/FALLOUT/",
-        "hdd0:/FALLOUT/",
-    };
-
-    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
-        const char* dir = candidates[i];
-        if (dir[0] == '\0') {
-            continue;
+    const char* first[] = { elfDir, cwdDir };
+    char found[512];
+    if (ps2storage_find_game(first, 2, found, sizeof(found))) {
+        printf("fallout-ce PS2: found MASTER.DAT in '%s'\n", found);
+        char target[512];
+        snprintf(target, sizeof(target), "%s", found);
+        size_t length = strlen(target);
+        // chdir("host:") / chdir("mass0:/FALLOUT") - drop a trailing slash
+        // unless it is the device root.
+        if (length > 1 && target[length - 1] == '/' && target[length - 2] != ':') {
+            target[length - 1] = '\0';
         }
-
-        if (ps2_has_master_dat(dir)) {
-            char target[512];
-            snprintf(target, sizeof(target), "%s", dir);
-            size_t length = strlen(target);
-            // chdir("host:") / chdir("mass:/FALLOUT") - drop a trailing slash
-            // unless it is the device root.
-            if (length > 1 && target[length - 1] == '/' && target[length - 2] != ':') {
-                target[length - 1] = '\0';
-            }
-            int rc = chdir(target);
-            printf("fallout-ce PS2: chdir('%s') = %d\n", target, rc);
-            return;
-        }
+        int rc = chdir(target);
+        printf("fallout-ce PS2: chdir('%s') = %d\n", target, rc);
+        return;
     }
 
     printf("fallout-ce PS2: MASTER.DAT not found anywhere\n");

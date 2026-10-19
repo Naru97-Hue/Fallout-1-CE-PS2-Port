@@ -250,6 +250,8 @@ target_sources(${EXECUTABLE_NAME} PUBLIC
     "src/plib/gnw/ps2hid.h"
     "src/plib/gnw/ps2nav.cc"
     "src/plib/gnw/ps2nav.h"
+    "src/plib/gnw/ps2storage.cc"
+    "src/plib/gnw/ps2storage.h"
     "src/plib/gnw/ps2card.cc"
     "src/plib/gnw/ps2card.h"
     "src/plib/gnw/ps2mods.cc"
@@ -376,6 +378,15 @@ if(PS2)
     find_package(SDL2 REQUIRED CONFIG)
     set(SDL2_LIBRARIES SDL2::SDL2main SDL2::SDL2-static mpeg dma eedebug z mc)
     target_compile_definitions(${EXECUTABLE_NAME} PUBLIC _EE PS2 __PS2__)
+
+    # MMCE driver (SD2PSX / MemCard PRO 2 SD cards), embedded in the ELF.
+    set(PS2_MMCEMAN_C "${CMAKE_CURRENT_BINARY_DIR}/ps2_mmceman_irx.c")
+    add_custom_command(
+        OUTPUT "${PS2_MMCEMAN_C}"
+        COMMAND "$ENV{PS2SDK}/bin/bin2c" "$ENV{PS2SDK}/iop/irx/mmceman.irx" "${PS2_MMCEMAN_C}" ps2_mmceman_irx
+        DEPENDS "$ENV{PS2SDK}/iop/irx/mmceman.irx"
+        VERBATIM)
+    target_sources(${EXECUTABLE_NAME} PRIVATE "${PS2_MMCEMAN_C}")
     # Don't halt the console on an integer divide by zero (MIPS GCC inserts a
     # trap before every division by default).
     target_compile_options(${EXECUTABLE_NAME} PRIVATE -mno-check-zero-division)

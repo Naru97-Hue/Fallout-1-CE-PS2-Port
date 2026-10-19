@@ -89,8 +89,17 @@ Save games: the map states inside each save slot are stored compressed on
 PS2 (much smaller and faster to save/load). Saves from older PS2 builds still
 load; PS2 saves can't be copied to the PC version.
 
-An internal HDD (hdd0:) or MX4SIO SD card should also work, since SDL's PS2
-startup loads those drivers too.
+WHERE THE GAME CAN LIVE
+The game looks next to FALLOUT.ELF first, then on every device below, in
+folders FALLOUT, FALLOUT1, GAMES/FALLOUT, APPS/FALLOUT or the device root:
+  USB sticks / USB hard drives (FAT32 or exFAT; several at once: mass0-3:)
+  MX4SIO (SD card adapter in a memory card slot)
+  MMCE SD memory cards (SD2PSX, MemCard PRO 2 ...: mmce0: / mmce1:)
+  the internal HDD (when launched from it), PCSX2's host: folder
+USB and SD devices can be slow to start: the game waits up to 8 seconds for
+them. debug.log / the console says which devices were found and where
+MASTER.DAT was. Discs (cdrom0:) aren't supported, as the game must write
+map states into its DATA folder while you play.
 
 
 CONTROLS (DualShock 2)
