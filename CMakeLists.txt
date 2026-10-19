@@ -392,6 +392,11 @@ if(PS2)
     # Don't halt the console on an integer divide by zero (MIPS GCC inserts a
     # trap before every division by default).
     target_compile_options(${EXECUTABLE_NAME} PRIVATE -mno-check-zero-division)
+    # Smaller ELF = more free RAM (the PS2 has 32 MB): drop unused code and
+    # data at link time, and the unwind tables nothing here uses.
+    target_compile_options(${EXECUTABLE_NAME} PRIVATE -ffunction-sections -fdata-sections -fno-asynchronous-unwind-tables
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>)
+    target_link_options(${EXECUTABLE_NAME} PRIVATE "-Wl,--gc-sections")
     target_sources(${EXECUTABLE_NAME} PUBLIC "src/ps2_thread_stack.cc")
     target_link_options(${EXECUTABLE_NAME} PUBLIC "-Wl,--wrap=SDL_CreateThreadInternal" "-Wl,--wrap=gsKit_init_screen" "-Wl,--defsym,_stack_size=0x100000")
 elseif((NOT ${CMAKE_SYSTEM_NAME} MATCHES "Linux") AND (NOT ${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD") AND (NOT ${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD"))

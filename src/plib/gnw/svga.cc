@@ -1,4 +1,5 @@
 #include "plib/gnw/svga.h"
+#include "plib/gnw/debug.h"
 
 #ifdef __PS2__
 #include "plib/gnw/ps2osk.h"
@@ -17,6 +18,9 @@ namespace fallout {
 
 static bool createRenderer(int width, int height);
 static void destroyRenderer();
+#ifdef __PS2__
+static bool ps2CreateFallbackTexture(int width, int height);
+#endif
 
 // screen rect
 Rect scr_size;
@@ -90,7 +94,7 @@ void GNW95_SetPaletteEntries(unsigned char* palette, int start, int count)
         SDL_SetPaletteColors(gSdlSurface->format->palette, colors, start, count);
 #ifdef __PS2__
         ps2gs_mark_palette_range(start, count);
-        if (!gPs2Direct) {
+        if (!gPs2Direct && gSdlTextureSurface != NULL) {
             SDL_BlitSurface(gSdlSurface, NULL, gSdlTextureSurface, NULL);
             ps2MarkAllDirty();
         }
@@ -116,7 +120,7 @@ void GNW95_SetPalette(unsigned char* palette)
         SDL_SetPaletteColors(gSdlSurface->format->palette, colors, 0, 256);
 #ifdef __PS2__
         ps2gs_mark_palette();
-        if (!gPs2Direct) {
+        if (!gPs2Direct && gSdlTextureSurface != NULL) {
             SDL_BlitSurface(gSdlSurface, NULL, gSdlTextureSurface, NULL);
             ps2MarkAllDirty();
         }
@@ -142,7 +146,7 @@ void GNW95_ShowRect(unsigned char* src, unsigned int srcPitch, unsigned int a3, 
     destRect.y = destY;
 #ifdef __PS2__
     ps2gs_mark_dirty(destX, destY, srcWidth, srcHeight);
-    if (!gPs2Direct) {
+    if (!gPs2Direct && gSdlTextureSurface != NULL) {
         SDL_BlitSurface(gSdlSurface, &srcRect, gSdlTextureSurface, &destRect);
         ps2MarkDirty(destX, destY, srcWidth, srcHeight);
     }
@@ -274,6 +278,22 @@ static bool createRenderer(int width, int height)
     }
 
 #ifdef __PS2__
+    // The 16-bit SDL texture and its surface (~1.2 MB) are only needed if the
+    // direct GS path can't present; they're made on first use (see
+    // renderPresent) instead of always.
+    (void)width;
+    (void)height;
+    return true;
+}
+
+static bool ps2CreateFallbackTexture(int width, int height)
+{
+    if (gSdlTexture != NULL && gSdlTextureSurface != NULL) {
+        return true;
+    }
+    debug_printf("svga: GS direct path unavailable, creating the SDL texture\n");
+#endif
+#ifdef __PS2__
     // ABGR1555 is native to SDL's PS2 renderer: no per-frame CPU conversion,
     // half the upload size. Fallout is 8-bit paletted (6 bits per channel), so
     // 5 bits per channel is barely distinguishable.
@@ -344,6 +364,11 @@ void renderPresent()
             ps2crash_step("osk render", 0);
         }
         ps2osk_render(gSdlRenderer, screenGetWidth(), screenGetHeight());
+        SDL_RenderPresent(gSdlRenderer);
+        return;
+    }
+
+    if (!ps2CreateFallbackTexture(screenGetWidth(), screenGetHeight())) {
         SDL_RenderPresent(gSdlRenderer);
         return;
     }

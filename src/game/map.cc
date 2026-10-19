@@ -890,6 +890,13 @@ int map_load(char* file_name)
             db_fclose(stream);
         }
 
+#ifdef __PS2__
+        if (rc == 0) {
+            char tag[48];
+            snprintf(tag, sizeof(tag), "map %s loaded", file_name);
+            ps2_log_memory(tag);
+        }
+#endif
         if (rc == 0) {
             strcpy(map_data.name, file_name);
             obj_dude->data.critter.combat.whoHitMe = NULL;

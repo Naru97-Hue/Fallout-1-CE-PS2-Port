@@ -227,6 +227,10 @@ object's ID, compressed game files unpack with a faster decoder, image sizes
 are remembered instead of re-read, and the Pip-Boy's text is loaded once.
 (Ideas from the commit notes of Nicolasalucin/fallout1-ce-ps2; the code
 here was written separately.)
+Memory: the ELF is built without unused code or unwind tables (about 1.5 MB
+less), and the SDL screen texture (about 1.2 MB) is only made if the GS path
+can't be used. debug.log shows free memory at startup, before the main menu
+and after each map loads ("mem[...]").
 If the sound driver doesn't start within 5 seconds the game carries on
 without sound instead of freezing.
 
