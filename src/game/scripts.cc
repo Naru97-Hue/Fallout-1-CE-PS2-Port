@@ -408,6 +408,24 @@ int new_obj_id()
     // full scans. Here one pass marks the taken ids just above cur_id in a
     // bitmap, then the first free one is picked from that.
     {
+        // Usually the very next id is free: one plain pass decides that.
+        int want = cur_id + 1;
+        Object* obj;
+        for (obj = obj_find_first(); obj != NULL; obj = obj_find_next()) {
+            if (obj->id == want) {
+                break;
+            }
+        }
+        if (obj == NULL) {
+            cur_id = want;
+            if (cur_id >= 18000) {
+                debug_printf("\n    ERROR: new_obj_id() !!!! Picked PLAYER ID!!!!");
+            }
+            cur_id++;
+            return cur_id;
+        }
+    }
+    {
         enum { WINDOW = 32768 };
         static unsigned int taken[WINDOW / 32];
         memset(taken, 0, sizeof(taken));

@@ -23,6 +23,10 @@ ${CXX:-c++} -D__PS2__ -include "$ROOT/tools/smoke/stub/funopen_shim.h" -I"$ROOT/
     "$ROOT/tools/smoke/modarc_test.cc" "$ROOT/src/plib/gnw/ps2modarc.cc" -o "$TMP/modarc_test" -lz
 "$TMP/modarc_test" "$TMP/TEST.ZIP" "$TMP/TEST.DAT"
 
+echo "== object ids"
+${CXX:-c++} -O2 "$ROOT/tools/smoke/objid_test.cc" -o "$TMP/objid_test"
+"$TMP/objid_test"
+
 echo "== LZSS decoder"
 ${CXX:-c++} -O2 -I"$ROOT/src" "$ROOT/tools/smoke/lzss_main.cc" "$ROOT/src/plib/db/lzss.cc" -o "$TMP/lzss_ref"
 ${CXX:-c++} -O2 -D__PS2__ -I"$ROOT/src" "$ROOT/tools/smoke/lzss_main.cc" "$ROOT/src/plib/db/lzss.cc" -o "$TMP/lzss_fast"
