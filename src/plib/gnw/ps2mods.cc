@@ -13,6 +13,7 @@
 #include "plib/color/color.h"
 #include "plib/gnw/debug.h"
 #include "plib/gnw/intrface.h"
+#include "plib/gnw/ps2modarc.h"
 #include "plib/gnw/svga.h"
 #include "plib/gnw/text.h"
 #include "fps_limiter.h"
@@ -64,8 +65,8 @@ static void ps2mods_scan()
         if (name[0] == '.' || strlen(name) >= MOD_NAME_SIZE) {
             continue;
         }
-        if (!ps2mods_is_dir(name)) {
-            continue;
+        if (!modpack_is_archive_file(name) && !ps2mods_is_dir(name)) {
+            continue; // a mod is a folder, or a .ZIP / .DAT file
         }
         snprintf(gModNames[gModCount++], MOD_NAME_SIZE, "%s", name);
     }
@@ -201,6 +202,45 @@ static int gArtW = 0;
 static int gArtH = 0;
 static ModInfo gInfo;
 
+// The mod being looked at on the MODS screen (its archives, if any).
+static ModPack* gPreviewPack = NULL;
+
+// A file of the mod (MOD.TXT, PREVIEW.BMP): loose in its folder, or
+// anywhere inside its .ZIP / .DAT files.
+static bool ps2mods_read_extra(int item, const char* file, unsigned char** data, size_t* size)
+{
+    const char* name = gModNames[item - 1];
+    if (!modpack_is_archive_file(name)) {
+        char path[COMPAT_MAX_PATH];
+        snprintf(path, sizeof(path), "mods/%s/%s", name, file);
+        FILE* stream = fopen(path, "rb");
+        if (stream != NULL) {
+            fseek(stream, 0, SEEK_END);
+            long length = ftell(stream);
+            fseek(stream, 0, SEEK_SET);
+            unsigned char* buf = length > 0 && length < 8 * 1024 * 1024 ? (unsigned char*)malloc(length + 1) : NULL;
+            bool ok = buf != NULL && fread(buf, 1, length, stream) == (size_t)length;
+            fclose(stream);
+            if (ok) {
+                buf[length] = '\0';
+                *data = buf;
+                *size = (size_t)length;
+                return true;
+            }
+            free(buf);
+        }
+    }
+    if (gPreviewPack != NULL && modpack_read_named(gPreviewPack, file, data, size)) {
+        unsigned char* grown = (unsigned char*)realloc(*data, *size + 1);
+        if (grown != NULL) {
+            grown[*size] = '\0';
+            *data = grown;
+        }
+        return true;
+    }
+    return false;
+}
+
 // MOD.TXT: line 1 the name, line 2 author / version, the rest a description
 // (word-wrapped to the box).
 static void ps2mods_load_info(int item)
@@ -229,20 +269,31 @@ static void ps2mods_load_info(int item)
     const char* name = gModNames[item - 1];
     snprintf(gInfo.title, sizeof(gInfo.title), "%s", name);
 
-    char path[COMPAT_MAX_PATH];
-    snprintf(path, sizeof(path), "mods/%s/MOD.TXT", name);
-    FILE* stream = fopen(path, "rb");
-    if (stream == NULL) {
-        snprintf(gInfo.lines[0], sizeof(gInfo.lines[0]), "No MOD.TXT in this mod's folder.");
+    unsigned char* data = NULL;
+    size_t dataSize = 0;
+    if (!ps2mods_read_extra(item, "MOD.TXT", &data, &dataSize)) {
+        snprintf(gInfo.lines[0], sizeof(gInfo.lines[0]), "No MOD.TXT in this mod.");
         gInfo.lineCount = 1;
         return;
     }
 
-    char line[256];
     int lineNo = 0;
     char text[1024] = "";
-    while (fgets(line, sizeof(line), stream) != NULL) {
-        line[strcspn(line, "\r\n")] = '\0';
+    char* cursor = (char*)data;
+    while (*cursor != '\0') {
+        char* end = cursor + strcspn(cursor, "\r\n");
+        char saved = *end;
+        *end = '\0';
+        char line[256];
+        snprintf(line, sizeof(line), "%s", cursor);
+        *end = saved;
+        cursor = end;
+        if (*cursor == '\r') {
+            cursor++;
+        }
+        if (*cursor == '\n') {
+            cursor++;
+        }
         if (lineNo == 0 && line[0] != '\0') {
             snprintf(gInfo.title, sizeof(gInfo.title), "%s", line);
         } else if (lineNo == 1) {
@@ -255,7 +306,7 @@ static void ps2mods_load_info(int item)
         }
         lineNo++;
     }
-    fclose(stream);
+    free(data);
 
     // Word wrap into the description box.
     const int maxWidth = SCREEN_W - 2 * LIST_X - LIST_W - 10;
@@ -299,9 +350,13 @@ static void ps2mods_load_art(int item)
         return;
     }
 
-    char path[COMPAT_MAX_PATH];
-    snprintf(path, sizeof(path), "mods/%s/PREVIEW.BMP", gModNames[item - 1]);
-    SDL_Surface* loaded = SDL_LoadBMP(path);
+    unsigned char* bmp = NULL;
+    size_t bmpSize = 0;
+    if (!ps2mods_read_extra(item, "PREVIEW.BMP", &bmp, &bmpSize)) {
+        return;
+    }
+    SDL_Surface* loaded = SDL_LoadBMP_RW(SDL_RWFromConstMem(bmp, (int)bmpSize), 1);
+    free(bmp);
     if (loaded == NULL) {
         return;
     }
@@ -342,6 +397,13 @@ static void ps2mods_load_art(int item)
 
 static void ps2mods_select(int item)
 {
+    modpack_close(gPreviewPack);
+    gPreviewPack = NULL;
+    if (item > 0) {
+        char root[64];
+        snprintf(root, sizeof(root), "mods/%s", gModNames[item - 1]);
+        gPreviewPack = modpack_open(root);
+    }
     gSelected = item;
     ps2mods_load_info(item);
     ps2mods_load_art(item);
@@ -586,6 +648,8 @@ void ps2mods_screen()
 
     win_delete(gWin);
     gWin = -1;
+    modpack_close(gPreviewPack);
+    gPreviewPack = NULL;
     free(gArt);
     gArt = NULL;
     text_font(fontSaved);

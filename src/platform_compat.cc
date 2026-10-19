@@ -1,5 +1,8 @@
 #include <ctype.h>
 #include "platform_compat.h"
+#ifdef __PS2__
+#include "plib/gnw/ps2modarc.h"
+#endif
 
 #include <stdio.h>
 #include <string.h>
@@ -469,12 +472,21 @@ static void compat_redirect_save_path(char* path)
     }
 }
 
-// Mod overlay: loose files in mods/<name>/ replace the game's data/ files.
+// Mod overlay: files in mods/<name>/ (loose, or inside .ZIP / .DAT files)
+// replace the game's data/ files; a mod can also be one .ZIP / .DAT file.
 static char gModRoot[64] = { 0 };
+static ModPack* gModPack = NULL;
+static bool gModIsArchive = false;
 
 void compat_set_mod_root(const char* root)
 {
+    modpack_close(gModPack);
+    gModPack = NULL;
     snprintf(gModRoot, sizeof(gModRoot), "%s", root != NULL ? root : "");
+    gModIsArchive = gModRoot[0] != '\0' && modpack_is_archive_file(gModRoot);
+    if (gModRoot[0] != '\0') {
+        gModPack = modpack_open(gModRoot);
+    }
 }
 
 const char* compat_get_mod_root()
@@ -482,7 +494,7 @@ const char* compat_get_mod_root()
     return gModRoot[0] != '\0' ? gModRoot : NULL;
 }
 
-// Read-only opens of "data/..." try "mods/<name>/..." first.
+// Read-only opens of "data/..." try the mod first.
 static FILE* compat_mod_fopen(const char* nativePath, const char* mode)
 {
     if (gModRoot[0] == '\0' || mode[0] != 'r' || strchr(mode, '+') != NULL) {
@@ -495,9 +507,15 @@ static FILE* compat_mod_fopen(const char* nativePath, const char* mode)
     if (compat_strnicmp(p, "data/", 5) != 0) {
         return NULL;
     }
-    char modPath[COMPAT_MAX_PATH];
-    snprintf(modPath, sizeof(modPath), "%s/%s", gModRoot, p + 5);
-    return fopen(modPath, mode);
+    if (!gModIsArchive) {
+        char modPath[COMPAT_MAX_PATH];
+        snprintf(modPath, sizeof(modPath), "%s/%s", gModRoot, p + 5);
+        FILE* stream = fopen(modPath, mode);
+        if (stream != NULL) {
+            return stream;
+        }
+    }
+    return modpack_fopen(gModPack, p + 5);
 }
 #endif
 

@@ -17,6 +17,12 @@ ${CXX:-c++} -D__PS2__ -I"$ROOT/tools/smoke/stub" -I"$ROOT/src" \
 "$TMP/icon_test" "$TMP/icons"
 python3 "$ROOT/tools/smoke/check_icons.py" "$TMP/icons"
 
+echo "== compressed mods (.ZIP / .DAT)"
+python3 "$ROOT/tools/smoke/make_test_archives.py" "$TMP"
+${CXX:-c++} -D__PS2__ -include "$ROOT/tools/smoke/stub/funopen_shim.h" -I"$ROOT/tools/smoke/stub" -I"$ROOT/src" \
+    "$ROOT/tools/smoke/modarc_test.cc" "$ROOT/src/plib/gnw/ps2modarc.cc" -o "$TMP/modarc_test" -lz
+"$TMP/modarc_test" "$TMP/TEST.ZIP" "$TMP/TEST.DAT"
+
 if command -v mips64r5900el-ps2-elf-gcc >/dev/null 2>&1 && [ -d "$ROOT/build-ps2" ]; then
     echo "== PS2 build"
     cmake --build "$ROOT/build-ps2" -j"$(nproc 2>/dev/null || echo 4)" >/dev/null

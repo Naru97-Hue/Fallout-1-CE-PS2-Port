@@ -181,9 +181,19 @@ MODS
 ----
 Put each mod in its own folder in mods/ next to MASTER.DAT, laid out like
 the game's DATA folder (mods/MYMOD/ART/..., mods/MYMOD/MAPS/...). Its files
-replace the game's files of the same name. Loose files only - mods that come
-as a .DAT need unpacking first (tools/f1dat.py). Keep save games of
-different mods in different slots.
+replace the game's files of the same name. Keep save games of different mods
+in different slots.
+
+Compressed mods work without unpacking:
+  mods/MYMOD.ZIP           a whole mod in one zip (stored or deflate)
+  mods/MYMOD.DAT           a whole mod in one Fallout 1 .DAT
+  mods/MYMOD/*.ZIP, *.DAT  archives inside a mod folder (loose files there
+                           win over the archives; archives load in name order)
+Inside a zip the files can be at the top level (ART/..., MAPS/...) or under a
+DATA folder, even inside another folder (MyMod/DATA/ART/...). MOD.TXT and
+PREVIEW.BMP can be inside the archive too. ZIP64 and encrypted zips aren't
+supported. Files are unpacked into memory when the game opens them, so very
+large mods use more memory and load a little slower than loose files.
 
 The MODS screen is the MODS tab in the settings (OPTIONS) screen.
 With no mods installed it shows how to add one. When mods/ has any folders:

@@ -254,6 +254,8 @@ target_sources(${EXECUTABLE_NAME} PUBLIC
     "src/plib/gnw/ps2storage.h"
     "src/plib/gnw/ps2card.cc"
     "src/plib/gnw/ps2card.h"
+    "src/plib/gnw/ps2modarc.cc"
+    "src/plib/gnw/ps2modarc.h"
     "src/plib/gnw/ps2mods.cc"
     "src/plib/gnw/ps2mods.h"
     "src/plib/gnw/ps2controls.cc"
