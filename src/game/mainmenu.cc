@@ -37,7 +37,7 @@ typedef enum MainMenuButton {
 #ifdef __PS2__
     // The empty sixth slot in the menu art.
     MAIN_MENU_BUTTON_OPTIONS,
-    // Below the menu art; only when mods/ has mods in it.
+    // Below the menu art.
     MAIN_MENU_BUTTON_MODS,
 #endif
     MAIN_MENU_BUTTON_COUNT,
@@ -192,9 +192,6 @@ int main_menu_create()
     for (int index = 0; index < MAIN_MENU_BUTTON_COUNT; index++) {
 #ifdef __PS2__
         if (index == MAIN_MENU_BUTTON_MODS) {
-            if (ps2mods_count() == 0) {
-                continue;
-            }
             // A dark plate behind the extra button, which sits below the art.
             int top = index * 42 - index + 40;
             for (int y = top; y < top + 36 && y < MAIN_MENU_WINDOW_HEIGHT; y++) {

@@ -423,6 +423,12 @@ static bool cache_add(Cache* cache, int key, int* indexPtr)
         }
 
         if (!allocated) {
+#ifdef __PS2__
+            static int failures = 0;
+            if (++failures <= 5) {
+                debug_printf("cache: out of memory for a %d byte item%s\n", size, failures == 5 ? " (further messages hidden)" : "");
+            }
+#endif
             break;
         }
 

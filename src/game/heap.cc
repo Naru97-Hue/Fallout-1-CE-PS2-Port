@@ -330,12 +330,8 @@ err_no_handle:
 err:
 
 #ifdef __PS2__
-    // The art cache hits this all the time and recovers (evicting or using
-    // system memory); printing it to the host file is slow. Log a few.
-    static int warnings = 0;
-    if (++warnings <= 5) {
-        debug_printf("Heap Warning: Could not allocate block of %d bytes.%s\n", size, warnings == 5 ? " (further warnings hidden)" : "");
-    }
+    // The cache hits this all the time and recovers (system memory, or
+    // making room): not an error. cache.cc logs it if it really fails.
 #else
     debug_printf("Heap Warning: Could not allocate block of %d bytes.\n", size);
 #endif

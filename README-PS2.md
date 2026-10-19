@@ -184,7 +184,7 @@ replace the game's files of the same name. Loose files only - mods that come
 as a .DAT need unpacking first (tools/f1dat.py). Keep save games of
 different mods in different slots.
 
-When mods/ has any folders:
+When mods/ has any folders (the MODS button is always on the main menu):
   - a CHOOSE A MOD list appears at startup (Original game / each mod)
   - the main menu gets a MODS button: the installed mods with their artwork
     and description, which one is in use, and "Ask at startup" (turn the

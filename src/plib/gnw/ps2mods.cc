@@ -206,6 +206,20 @@ static void ps2mods_load_info(int item)
         snprintf(gInfo.title, sizeof(gInfo.title), "Original game");
         snprintf(gInfo.lines[0], sizeof(gInfo.lines[0]), "Fallout as it shipped, no mod files used.");
         gInfo.lineCount = 1;
+        if (gModCount == 0) {
+            static const char* help[] = {
+                "Fallout as it shipped.",
+                "No mods installed. To add one, make",
+                "a folder mods/<NAME>/ next to",
+                "MASTER.DAT with the mod's files,",
+                "laid out like DATA. Optional extras:",
+                "PREVIEW.BMP (art), MOD.TXT (text).",
+            };
+            for (int i = 0; i < 6; i++) {
+                snprintf(gInfo.lines[i], sizeof(gInfo.lines[i]), "%s", help[i]);
+            }
+            gInfo.lineCount = 6;
+        }
         return;
     }
     const char* name = gModNames[item - 1];
