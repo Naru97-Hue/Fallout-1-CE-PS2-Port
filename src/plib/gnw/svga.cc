@@ -3,6 +3,7 @@
 
 #ifdef __PS2__
 #include "plib/gnw/ps2osk.h"
+#include "game/ps2autotest.h"
 #include "plib/gnw/ps2zoom.h"
 #include "plib/gnw/ps2video.h"
 #include "plib/gnw/ps2gs.h"
@@ -384,6 +385,7 @@ void renderPresent()
 #ifdef __PS2__
     ps2crash_heartbeat();
     ps2video_trial_poll();
+    ps2autotest_watchdog();
     if (ps2gs_present(gSdlRenderer, gSdlSurface, screenGetWidth(), screenGetHeight())) {
         gPs2Direct = true;
         if (ps2osk_is_visible()) {

@@ -250,6 +250,8 @@ target_sources(${EXECUTABLE_NAME} PUBLIC
     "src/plib/gnw/ps2hid.h"
     "src/plib/gnw/ps2nav.cc"
     "src/plib/gnw/ps2nav.h"
+    "src/game/ps2autotest.cc"
+    "src/game/ps2autotest.h"
     "src/plib/gnw/ps2storage.cc"
     "src/plib/gnw/ps2storage.h"
     "src/plib/gnw/ps2card.cc"

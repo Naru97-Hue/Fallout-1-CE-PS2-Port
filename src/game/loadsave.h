@@ -23,6 +23,10 @@ void InitLoadSave();
 void ResetLoadSave();
 int SaveGame(int mode);
 int LoadGame(int mode);
+#ifdef __PS2__
+int LoadGameAutotest(int slot);
+int SaveGameAutotest(int slot);
+#endif
 int isLoadingGame();
 void KillOldMaps();
 int MapDirErase(const char* path, const char* a2);

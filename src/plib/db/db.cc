@@ -2219,7 +2219,11 @@ static int db_fill_hash_table(DB_DATABASE* database, const char* path)
             is_directory = fileFindIsDirectory(&find_data);
             filename = fileFindGetName(&find_data);
 
-            if (is_directory) {
+            if (filename == NULL || filename[0] == '\0') {
+                // Some PS2 file systems (and emulators) report entries with
+                // no name; as a folder that meant "data//", "data///", ...
+                // forever.
+            } else if (is_directory) {
                 if (strcmp(filename, ".") != 0 && strcmp(filename, "..") != 0) {
                     snprintf(pattern, sizeof(pattern), "%s%s%c", path, filename, PATH_SEP);
                     db_fill_hash_table(database, pattern);

@@ -1,4 +1,7 @@
 #include "main.h"
+#ifdef __PS2__
+#include "game/ps2autotest.h"
+#endif
 
 // NOTE: Actual file name is unknown. Functions in this module do not present
 // in debug symbols from `mapper2.exe`. In OS X binary these functions appear
@@ -96,10 +99,15 @@ int gnw_main(int argc, char** argv)
         return 1;
     }
 
-    gmovie_play(MOVIE_IPLOGO, GAME_MOVIE_FADE_IN);
-    debug_printf("main: iplogo done\n");
-    gmovie_play(MOVIE_INTRO, 0);
-    debug_printf("main: intro done\n");
+#ifdef __PS2__
+    if (!ps2autotest_active())
+#endif
+    {
+        gmovie_play(MOVIE_IPLOGO, GAME_MOVIE_FADE_IN);
+        debug_printf("main: iplogo done\n");
+        gmovie_play(MOVIE_INTRO, 0);
+        debug_printf("main: intro done\n");
+    }
 #ifdef __PS2__
     ps2_log_memory("before main menu");
 #endif
@@ -109,6 +117,25 @@ int gnw_main(int argc, char** argv)
         bool done = false;
 
         config_get_value(&game_config, GAME_CONFIG_PREFERENCES_KEY, GAME_CONFIG_LANGUAGE_FILTER_KEY, &language_filter);
+
+#ifdef __PS2__
+        if (ps2autotest_active()) {
+            // Unattended test: load a slot, play, quit (see ps2autotest.h).
+            int win = win_add(0, 0, screenGetWidth(), screenGetHeight(), colorTable[0], WINDOW_MODAL | WINDOW_MOVE_ON_TOP);
+            main_menu_hide(true);
+            main_menu_destroy();
+            gsound_background_stop();
+            main_loadgame_new();
+            loadColorTable("color.pal");
+            palette_fade_to(cmap);
+            ps2autotest_run_from_main_menu();
+            win_delete(win);
+            main_game_loop();
+            main_unload_new();
+            main_reset_system();
+            done = true;
+        }
+#endif
 
         while (!done) {
             kb_clear();
@@ -329,6 +356,9 @@ static void main_game_loop()
 
         int keyCode = get_input();
         game_handle_input(keyCode, false);
+#ifdef __PS2__
+        ps2autotest_tick();
+#endif
 
         scripts_check_state();
 

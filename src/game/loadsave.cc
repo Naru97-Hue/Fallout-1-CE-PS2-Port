@@ -1671,6 +1671,24 @@ static int SaveSlot()
 }
 #endif
 
+#ifdef __PS2__
+// Unattended tests (ps2autotest.cc): load / quick-save a given slot
+// without the load/save screens.
+int LoadGameAutotest(int slot)
+{
+    slot_cursor = slot;
+    quick_done = true;
+    return LoadGame(LOAD_SAVE_MODE_QUICK);
+}
+
+int SaveGameAutotest(int slot)
+{
+    slot_cursor = slot;
+    quick_done = true;
+    return SaveGame(LOAD_SAVE_MODE_QUICK);
+}
+#endif
+
 // 0x46FCC4
 int isLoadingGame()
 {
