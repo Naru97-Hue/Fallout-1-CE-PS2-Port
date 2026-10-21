@@ -897,7 +897,15 @@ int db_fgetc(DB_FILE* stream)
 
     if (stream != NULL) {
         if ((stream->flags & 0x4) != 0) {
+#ifdef __PS2__
+            // No per-character lock: on the PS2 every fgetc/fputc took and
+            // released a kernel semaphore, and saves/loads move map states
+            // one byte at a time (hundreds of thousands of calls). A DB_FILE
+            // is only used by one thread.
+            ch = _getc_unlocked_r(_REENT, stream->uncompressed_file_stream);
+#else
             ch = fgetc(stream->uncompressed_file_stream);
+#endif
         } else {
             switch (stream->flags & 0xF0) {
             case 16:
@@ -1189,7 +1197,11 @@ size_t db_fwrite(const void* buf, size_t size, size_t count, DB_FILE* stream)
 int db_fputc(int ch, DB_FILE* stream)
 {
     if (stream != NULL && (stream->flags & 0x4) != 0) {
+#ifdef __PS2__
+        return _putc_unlocked_r(_REENT, ch, stream->uncompressed_file_stream);
+#else
         return fputc(ch, stream->uncompressed_file_stream);
+#endif
     }
 
     return -1;

@@ -56,6 +56,8 @@
 #ifdef __PS2__
 #include <stdlib.h>
 #include <zlib.h>
+
+#include <SDL.h>
 #endif
 
 namespace fallout {
@@ -1521,6 +1523,32 @@ static int LSGameEnd(int windowType)
 }
 
 // 0x46F978
+#ifdef __PS2__
+// "Saving..." box while a save is written (it takes a few seconds on USB).
+static int SavingNoticeShow()
+{
+    const int width = 220;
+    const int height = 60;
+    int win = win_add((screenGetWidth() - width) / 2, (screenGetHeight() - height) / 2, width, height,
+        colorTable[0], WINDOW_MODAL | WINDOW_MOVE_ON_TOP);
+    if (win == -1) {
+        return -1;
+    }
+    unsigned char* buf = win_get_buf(win);
+    buf_fill(buf, width, height, width, colorTable[0]);
+    draw_box(buf, width, 0, 0, width - 1, height - 1, colorTable[992]);
+    draw_box(buf, width, 2, 2, width - 3, height - 3, colorTable[10570]);
+    int oldFont = text_curr();
+    text_font(103);
+    const char* text = "SAVING...";
+    text_to_buf(buf + width * ((height - text_height()) / 2) + (width - text_width(text)) / 2, text, width, width, colorTable[18979]);
+    text_font(oldFont);
+    win_draw(win);
+    renderPresent();
+    return win;
+}
+#endif
+
 static int SaveSlotOnce()
 {
     ls_error_code = 0;
@@ -1535,9 +1563,15 @@ static int SaveSlotOnce()
     snprintf(gmpath, sizeof(gmpath), "%s\\%s\\%s%.2d", patches, "SAVEGAME", "SLOT", slot_cursor + 1);
     compat_mkdir(gmpath);
 
+#ifdef __PS2__
+    Uint32 backupStart = SDL_GetTicks();
+#endif
     if (SaveBackup() == -1) {
         debug_printf("\nLOADSAVE: Warning, can't backup save file!\n");
     }
+#ifdef __PS2__
+    debug_printf("LOADSAVE: slot prepared in %u ms\n", SDL_GetTicks() - backupStart);
+#endif
 
     snprintf(gmpath, sizeof(gmpath), "%s\\%s%.2d\\", "SAVEGAME", "SLOT", slot_cursor + 1);
     strcat(gmpath, "SAVE.DAT");
@@ -1570,6 +1604,9 @@ static int SaveSlotOnce()
 
     for (int index = 0; index < LOAD_SAVE_HANDLER_COUNT; index++) {
         long pos = db_ftell(flptr);
+#ifdef __PS2__
+        Uint32 handlerStart = SDL_GetTicks();
+#endif
         SaveGameHandler* handler = master_save_list[index];
         if (handler(flptr) == -1) {
             debug_printf("\nLOADSAVE: ** Error writing save function #%d data! **\n", index);
@@ -1582,7 +1619,11 @@ static int SaveSlotOnce()
             return -1;
         }
 
+#ifdef __PS2__
+        debug_printf("LOADSAVE: Save function #%d data size written: %d bytes (%u ms).\n", index, db_ftell(flptr) - pos, SDL_GetTicks() - handlerStart);
+#else
         debug_printf("LOADSAVE: Save function #%d data size written: %d bytes.\n", index, db_ftell(flptr) - pos);
+#endif
     }
 
     debug_printf("LOADSAVE: Total save data written: %ld bytes.\n", db_ftell(flptr));
@@ -1619,7 +1660,7 @@ static void SaveFallbackNotice(const char* why)
     dialog_out("SAVED TO USB", body, 4, 169, 116, colorTable[32328], NULL, colorTable[32328], DIALOG_BOX_LARGE);
 }
 
-static int SaveSlot()
+static int SaveSlotWithFallback()
 {
     if (!compat_save_root_is_card()) {
         return SaveSlotOnce();
@@ -1661,6 +1702,16 @@ static int SaveSlot()
     int rc = SaveSlotOnce();
     if (rc != -1) {
         SaveFallbackNotice(why);
+    }
+    return rc;
+}
+
+static int SaveSlot()
+{
+    int notice = SavingNoticeShow();
+    int rc = SaveSlotWithFallback();
+    if (notice != -1) {
+        win_delete(notice);
     }
     return rc;
 }
@@ -2434,9 +2485,16 @@ static int GameMap2Slot(DB_FILE* stream)
         return -1;
     }
 
+#ifdef __PS2__
+    Uint32 t0 = SDL_GetTicks();
+#endif
     if (map_save_in_game(false) == -1) {
         return -1;
     }
+#ifdef __PS2__
+    debug_printf("LOADSAVE: current map written in %u ms\n", SDL_GetTicks() - t0);
+    t0 = SDL_GetTicks();
+#endif
 
     snprintf(str0, sizeof(str0), "%s\\*.%s", "MAPS", "SAV");
 
@@ -2468,6 +2526,10 @@ static int GameMap2Slot(DB_FILE* stream)
     strcat(gmpath, str0);
     compat_remove(gmpath);
 
+#ifdef __PS2__
+    debug_printf("LOADSAVE: map list + slot cleared in %u ms\n", SDL_GetTicks() - t0);
+    t0 = SDL_GetTicks();
+#endif
     for (int index = 0; index < fileNameListLength; index += 1) {
         char* string = fileNameList[index];
         if (db_fwrite(string, strlen(string) + 1, 1, stream) == -1) {
@@ -2484,6 +2546,9 @@ static int GameMap2Slot(DB_FILE* stream)
     }
 
     db_free_file_list(&fileNameList, NULL);
+#ifdef __PS2__
+    debug_printf("LOADSAVE: %d map states copied in %u ms\n", fileNameListLength, SDL_GetTicks() - t0);
+#endif
 
     strmfe(str0, "AUTOMAP.DB", "SAV");
     snprintf(str1, sizeof(str1), "%s\\%s%.2d\\%s", "SAVEGAME", "SLOT", slot_cursor + 1, str0);
@@ -2836,6 +2901,19 @@ int MapDirEraseFile(const char* a1, const char* a2)
 // 0x471D38
 static int SaveBackup()
 {
+#ifdef __PS2__
+    // No backup copy on the PS2: renaming/copying every map file of the slot
+    // to .BAK first (and deleting them afterwards) was a big part of the
+    // save time on USB / memory card. The old map states are just cleared so
+    // maps the new save hasn't visited don't keep stale data. The cost: if a
+    // save fails halfway, that slot is lost instead of restored.
+    debug_printf("\nLOADSAVE: Clearing old map files of the slot (no backup on PS2)\n");
+    map_backup_count = -1;
+    automap_db_flag = 0;
+    snprintf(gmpath, sizeof(gmpath), "%s\\%s%.2d\\", "SAVEGAME", "SLOT", slot_cursor + 1);
+    MapDirErase(gmpath, "SAV");
+    return 0;
+#endif
     debug_printf("\nLOADSAVE: Backing up save slot files..\n");
 
     snprintf(gmpath, sizeof(gmpath), "%s\\%s\\%s%.2d\\", patches, "SAVEGAME", "SLOT", slot_cursor + 1);
