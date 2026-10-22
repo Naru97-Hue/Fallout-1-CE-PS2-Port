@@ -2,7 +2,7 @@
 # Builds a release folder and zip: the stripped ELF, the README and a
 # folder layout to copy the game into. No game data is included.
 #
-#   tools/make_dist.sh v0.7          # -> dist/v0.7/ and dist/fallout1-ce-ps2-v0.7.zip
+#   tools/make_dist.sh v1.0          # -> dist/v1.0/ and dist/fallout1-ce-ps2-v1.0.zip
 #
 # Needs the ps2dev toolchain in PATH (or run it inside the Docker image, see
 # README-PS2.md) and an existing build-ps2 (cmake --build build-ps2).

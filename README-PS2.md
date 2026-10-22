@@ -30,7 +30,7 @@ Or with Docker (no toolchain install needed):
 ```sh
 docker build -t fallout1-ce-ps2 .
 docker run --rm -v "$PWD:/src" fallout1-ce-ps2                         # build
-docker run --rm -v "$PWD:/src" fallout1-ce-ps2 tools/make_dist.sh v0.7  # release zip
+docker run --rm -v "$PWD:/src" fallout1-ce-ps2 tools/make_dist.sh v1.0  # release zip
 ```
 
 Release helpers in tools/:

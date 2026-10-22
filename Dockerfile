@@ -1,6 +1,6 @@
 # Reproducible PS2 build. From the repository root:
 #   docker build -t fallout1-ce-ps2 .
-#   docker run --rm -v "$PWD:/src" fallout1-ce-ps2 tools/make_dist.sh v0.7
+#   docker run --rm -v "$PWD:/src" fallout1-ce-ps2 tools/make_dist.sh v1.0
 FROM ps2dev/ps2dev:latest
 
 RUN apk add --no-cache cmake make g++ python3 zip git

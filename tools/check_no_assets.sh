@@ -4,7 +4,7 @@
 # bring their own copy.
 #
 #   tools/check_no_assets.sh            # check the repository
-#   tools/check_no_assets.sh dist/v0.7  # check a release folder
+#   tools/check_no_assets.sh dist/v1.0  # check a release folder
 set -eu
 
 PATTERN='\.(dat|DAT|frm|FRM|fr[0-5]|FR[0-5]|acm|ACM|mve|MVE|pro|PRO|map|MAP|int|INT|msg|MSG|pal|PAL|aaf|AAF|lst|LST|sav|SAV|gam|GAM)$'
