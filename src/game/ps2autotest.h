@@ -13,7 +13,9 @@ namespace fallout {
 // Used with the emulator test (tools/emu); players never have this file.
 bool ps2autotest_active();
 int ps2autotest_art_cache_mb();
-const char* ps2autotest_big_map(); // AUTOTEST.TXT "bigmap=NAME" (treat as a big map) // AUTOTEST.TXT "artcache=N", 0 = not set
+const char* ps2autotest_big_map();
+// AUTOTEST.TXT "bootpad=6,14": pad buttons (SDL numbers) pressed in the boot mod menu.
+const char* ps2autotest_boot_pad(); // AUTOTEST.TXT "bigmap=NAME" (treat as a big map) // AUTOTEST.TXT "artcache=N", 0 = not set
 void ps2autotest_run_from_main_menu();
 void ps2autotest_tick(); // once per frame of the game loop
 void ps2autotest_watchdog(); // every presented frame

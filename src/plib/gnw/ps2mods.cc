@@ -27,6 +27,10 @@
 #include "plib/gnw/grbuf.h"
 #include "plib/gnw/input.h"
 #include "plib/gnw/kb.h"
+#include "plib/gnw/mouse.h"
+#include "plib/gnw/ps2pad.h"
+#include "game/palette.h"
+#include "game/ps2autotest.h"
 
 #include <SDL.h>
 #include <stdlib.h>
@@ -124,11 +128,11 @@ static void ps2mods_use(const char* name)
     debug_printf("ps2mods: using mod '%s'\n", name);
 }
 
-void ps2mods_boot_menu()
+bool ps2mods_boot_menu()
 {
     ps2mods_scan();
     if (gModCount == 0) {
-        return;
+        return false;
     }
 
     char last[MOD_NAME_SIZE];
@@ -143,7 +147,7 @@ void ps2mods_boot_menu()
     // Menu turned off (MODS screen): just start with the remembered choice.
     if (!gAskAtStartup) {
         ps2mods_use(start > 0 ? gModNames[start - 1] : NULL);
-        return;
+        return false;
     }
 
     char* items[MAX_MODS + 1];
@@ -154,11 +158,43 @@ void ps2mods_boot_menu()
 
     int x = screenGetWidth() / 2 - 120;
     int y = screenGetHeight() / 2 - 100;
+    // This runs before the game is set up: the splash screen's palette is
+    // still on, the mouse cursor is hidden (so clicks are ignored) and the
+    // D-pad would jump that hidden cursor around. Use the game's palette and
+    // plain menu keys: D-pad picks, X / Square starts, O / Start = no mod.
+    palette_set_to(cmap);
+    mouse_show();
+    ps2pad_set_menu_keys(true);
+    kb_clear();
+
+    // Test mode: press the listed pad buttons, as the controller would.
+    const char* testPad = ps2autotest_boot_pad();
+    if (testPad != NULL) {
+        debug_printf("ps2mods: test presses %s\n", testPad);
+        for (const char* p = testPad; *p != '\0';) {
+            int button = atoi(p);
+            for (int down = 1; down >= 0; down--) {
+                SDL_Event e;
+                memset(&e, 0, sizeof(e));
+                e.type = down ? SDL_JOYBUTTONDOWN : SDL_JOYBUTTONUP;
+                e.jbutton.button = (Uint8)button;
+                e.jbutton.state = down ? SDL_PRESSED : SDL_RELEASED;
+                SDL_PushEvent(&e);
+            }
+            const char* comma = strchr(p, ',');
+            p = comma != NULL ? comma + 1 : p + strlen(p);
+        }
+    }
+
     int choice = win_list_select_at("CHOOSE A MOD", items, gModCount + 1, NULL, x, y, colorTable[32747] | 0x10000, start);
+
+    ps2pad_set_menu_keys(false);
+    mouse_hide();
 
     const char* name = choice > 0 ? gModNames[choice - 1] : "";
     ps2mods_use(name);
     ps2mods_write_last(name, true);
+    return true; // the splash screen needs showing again
 }
 
 int ps2mods_count()

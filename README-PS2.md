@@ -210,7 +210,9 @@ large mods use more memory and load a little slower than loose files.
 
 The MODS screen is the MODS tab in the settings (OPTIONS) screen.
 With no mods installed it shows how to add one. When mods/ has any folders:
-  - a CHOOSE A MOD list appears at startup (Original game / each mod)
+  - a CHOOSE A MOD list appears at startup (Original game / each mod):
+    D-pad to pick, X or Square to start, O or Start for the original game
+    (a USB keyboard's arrows / Enter / Esc work too)
   - OPTIONS > MODS lists the installed mods with their artwork
     and description, which one is in use, and "Ask at startup" (turn the
     startup list off to always start with the chosen mod). A new choice

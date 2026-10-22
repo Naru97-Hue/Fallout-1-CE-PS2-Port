@@ -202,7 +202,10 @@ int game_init(const char* windowTitle, bool isMapper, int font, int flags, int a
 #ifdef __PS2__
     // Mod loader: pick a mod (if mods/ has any) before the game reads its data.
     if (!game_in_mapper) {
-        ps2mods_boot_menu();
+        if (ps2mods_boot_menu()) {
+            // Back to the splash screen (the chosen mod's, if it has one).
+            game_splash_screen();
+        }
     }
 #endif
 

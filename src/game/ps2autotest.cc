@@ -30,6 +30,7 @@ static int gSeconds = 60;
 static int gSaveSlot = 0;
 static int gArtCacheMb = 0;
 static char gBigMap[16] = "";
+static char gBootPad[64] = "";
 static int gFadeTest = 1;
 static Uint32 gStart = 0;
 static Uint32 gNextWalk = 0;
@@ -52,6 +53,7 @@ bool ps2autotest_active()
                 sscanf(line, "save=%d", &gSaveSlot);
                 sscanf(line, "artcache=%d", &gArtCacheMb);
                 sscanf(line, "bigmap=%15s", gBigMap);
+                sscanf(line, "bootpad=%63s", gBootPad);
                 sscanf(line, "fadetest=%d", &gFadeTest);
             }
             fclose(stream);
@@ -65,6 +67,11 @@ bool ps2autotest_active()
 int ps2autotest_art_cache_mb()
 {
     return ps2autotest_active() ? gArtCacheMb : 0;
+}
+
+const char* ps2autotest_boot_pad()
+{
+    return ps2autotest_active() && gBootPad[0] != '\0' ? gBootPad : NULL;
 }
 
 const char* ps2autotest_big_map()

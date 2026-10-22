@@ -13,6 +13,7 @@
 #include "plib/gnw/ps2pad.h"
 #include "plib/gnw/ps2controls.h"
 #include "plib/gnw/ps2nav.h"
+#include "plib/gnw/debug.h"
 #include "plib/gnw/ps2osk.h"
 #include "plib/gnw/ps2video.h"
 
@@ -99,6 +100,49 @@ static int gPressedAction[PAD_BUTTON_COUNT] = { PS2_ACTION_NONE, PS2_ACTION_NONE
     PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE,
     PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE };
 
+// Simple menu keys (see ps2pad_set_menu_keys): the key each button is
+// holding down, released when the button is or when the mode ends.
+static bool gMenuKeys = false;
+static int gMenuKeyHeld[PAD_BUTTON_COUNT];
+static bool gMenuKeysFlush = false;
+
+void ps2pad_set_menu_keys(bool on)
+{
+    if (gMenuKeys && !on) {
+        gMenuKeysFlush = true; // key-ups go out on the next frame
+    }
+    gMenuKeys = on;
+}
+
+static void ps2pad_flush_menu_keys(Ps2PadKeyCallback* emitKey)
+{
+    for (int button = 0; button < PAD_BUTTON_COUNT; button++) {
+        if (gMenuKeyHeld[button] != 0) {
+            emitKey(gMenuKeyHeld[button], false);
+            gMenuKeyHeld[button] = 0;
+        }
+    }
+    gMenuKeysFlush = false;
+}
+
+static int ps2pad_menu_key(int button)
+{
+    switch (button) {
+    case PAD_CROSS:
+    case PAD_SQUARE:
+        return SDL_SCANCODE_RETURN;
+    case PAD_CIRCLE:
+    case PAD_START:
+        return SDL_SCANCODE_ESCAPE;
+    case PAD_UP:
+    case PAD_DOWN:
+    case PAD_LEFT:
+    case PAD_RIGHT:
+        return kButtonKeys[button];
+    }
+    return 0;
+}
+
 static void ps2pad_apply(int action, bool down, Ps2PadKeyCallback* emitKey)
 {
     switch (action) {
@@ -154,6 +198,7 @@ void ps2pad_init()
 
     SDL_JoystickEventState(SDL_ENABLE);
     ps2pad_open_first();
+    debug_printf("ps2pad: %d controller(s) found%s\n", SDL_NumJoysticks(), gJoystick != NULL ? ", controller 1 opened" : "");
     gLastTick = SDL_GetTicks();
     gInitialized = true;
 }
@@ -232,6 +277,27 @@ bool ps2pad_handle_event(SDL_Event* event, Ps2PadKeyCallback* emitKey)
             if (down) {
                 ps2video_trial_answer(button == PAD_CROSS);
             }
+            return true;
+        }
+
+        if (gMenuKeys) {
+            int key = ps2pad_menu_key(button);
+            if (down && key != 0) {
+                if (gMenuKeyHeld[button] != 0) {
+                    emitKey(gMenuKeyHeld[button], false);
+                }
+                emitKey(key, true);
+                gMenuKeyHeld[button] = key;
+            } else if (!down && gMenuKeyHeld[button] != 0) {
+                emitKey(gMenuKeyHeld[button], false);
+                gMenuKeyHeld[button] = 0;
+            }
+            return true;
+        }
+        if (!down && gMenuKeyHeld[button] != 0) {
+            // Pressed while a menu was up, let go after it closed.
+            emitKey(gMenuKeyHeld[button], false);
+            gMenuKeyHeld[button] = 0;
             return true;
         }
 
@@ -334,6 +400,10 @@ void ps2pad_check_connection(Ps2PadKeyCallback* emitKey)
 {
     static bool wasConnected = true;
     bool connected = ps2pad_connected();
+
+    if (gMenuKeysFlush) {
+        ps2pad_flush_menu_keys(emitKey);
+    }
 
     // D-pad held on a target: keep jumping (once per frame check).
     if (gDpadHeldDir >= 0 && connected) {

@@ -9,7 +9,7 @@ namespace fallout {
 // files replace the game's data/ files of the same name (mods/MYMOD/ART/...
 // over data/ART/...). When there are any, a boot menu picks one (or none);
 // the last choice is remembered in mods/LAST.TXT and highlighted.
-void ps2mods_boot_menu();
+bool ps2mods_boot_menu(); // true if the menu was shown
 
 // How many mods are installed (after ps2mods_boot_menu).
 int ps2mods_count();
