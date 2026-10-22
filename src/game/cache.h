@@ -66,6 +66,14 @@ typedef struct Cache {
     // Total number of hits during cache lifetime.
     unsigned int hits;
 
+#ifdef __PS2__
+    // Statistics for the debug log: lookups found in memory / loaded from
+    // disk, and how much was loaded.
+    unsigned int statHits;
+    unsigned int statMisses;
+    unsigned int statBytesLoaded;
+#endif
+
     // List of cache entries.
     CacheEntry** entries;
 

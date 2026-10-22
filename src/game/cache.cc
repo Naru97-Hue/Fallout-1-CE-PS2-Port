@@ -114,6 +114,9 @@ bool cache_lock(Cache* cache, int key, void** data, CacheEntry** cacheEntryPtr)
         // Use existing cache entry.
         CacheEntry* cacheEntry = cache->entries[index];
         cacheEntry->hits++;
+#ifdef __PS2__
+        cache->statHits++;
+#endif
     } else if (rc == 3) {
         // New cache entry is required.
         if (cache->entriesLength >= INT_MAX) {
@@ -444,6 +447,10 @@ static bool cache_add(Cache* cache, int key, int* indexPtr)
             heap_unlock(&(cache->heap), cacheEntry->heapHandleIndex);
 
             cacheEntry->size = size;
+#ifdef __PS2__
+            cache->statMisses++;
+            cache->statBytesLoaded += size;
+#endif
             cacheEntry->key = key;
 
             bool isNewKey = true;

@@ -1,4 +1,7 @@
 #include "game/art.h"
+#ifdef __PS2__
+#include "game/ps2autotest.h"
+#endif
 
 
 #include <stdio.h>
@@ -101,6 +104,10 @@ int art_init()
     // 4 MB cache keeps more of a town's art in memory between scrolls.
     if (ps2_free_memory() > 14L * 1024 * 1024) {
         cacheSize = 4;
+    }
+    // Test runs (AUTOTEST.TXT "artcache=N") can force a size.
+    if (ps2autotest_art_cache_mb() > 0) {
+        cacheSize = ps2autotest_art_cache_mb();
     }
     debug_printf("art cache: %d MB\n", cacheSize);
 #endif
@@ -968,6 +975,17 @@ static void art_size_cache_put(int fid, int size)
 #endif
 
 // 0x4191D8
+#ifdef __PS2__
+void art_cache_log_stats(const char* tag)
+{
+    unsigned int total = art_cache.statHits + art_cache.statMisses;
+    debug_printf("art cache [%s]: %u lookups, %u in memory, %u loaded from disk (%.1f%% hits), %u KB loaded, %d/%d KB used\n",
+        tag, total, art_cache.statHits, art_cache.statMisses,
+        total ? 100.0 * art_cache.statHits / total : 0.0,
+        art_cache.statBytesLoaded / 1024, art_cache.size / 1024, art_cache.maxSize / 1024);
+}
+#endif
+
 int art_data_size(int fid, int* sizePtr)
 {
 #ifdef __PS2__
