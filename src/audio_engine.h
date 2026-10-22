@@ -12,6 +12,10 @@ namespace fallout {
 #define AUDIO_ENGINE_SOUND_BUFFER_STATUS_LOOPING 0x00000004
 
 bool audioEngineInit();
+#ifdef __PS2__
+// Main thread: writes the sound queue statistics to debug.log every 30 s.
+void audioEngineLogStats();
+#endif
 void audioEngineExit();
 void audioEnginePause();
 void audioEngineResume();

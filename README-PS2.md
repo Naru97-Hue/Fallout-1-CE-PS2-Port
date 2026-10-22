@@ -46,7 +46,8 @@ plays the original files from `MASTER.DAT` / `DATA` through the PS2's sound
 processor. Nothing needs converting. The port keeps only about 45 ms of
 sound queued (instead of SDL's usual ~110 ms), so clicks and gunshots are
 heard sooner; `debug.log` reports the queue level and any underruns every
-30 seconds.
+30 seconds, along with how much stack each background thread has used
+(the "stack[...]" lines).
 
 **Input**: frames are paced to fixed deadlines, so the time between reading
 the pad and drawing the result stays even. Holding the D-pad in menus and

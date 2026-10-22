@@ -3,6 +3,9 @@
 #include <string.h>
 
 #include "plib/gnw/debug.h"
+#ifdef __PS2__
+#include "ps2_thread_stack.h"
+#endif
 
 #include <string.h>
 
@@ -265,6 +268,10 @@ extern "C" {
 
 int __real_audsrv_wait_audio(int bytes);
 
+static int gAudioStats[5];
+static volatile int gAudioStatsReady = 0;
+
+
 int __wrap_audsrv_wait_audio(int bytes)
 {
     static unsigned int blocks = 0;
@@ -291,11 +298,18 @@ int __wrap_audsrv_wait_audio(int bytes)
     if (queued > maxQueued) {
         maxQueued = queued;
     }
+    // Hand the numbers to the main thread every 30 s; it writes the log
+    // line (audioEngineLogStats), so this thread never does file I/O.
     Uint32 now = SDL_GetTicks();
     if ((Sint32)(now - nextReport) >= 0) {
-        if (nextReport != 0) {
-            fallout::debug_printf("audio: %u blocks, queue %d-%d bytes before each block (target %d), %u underruns\n",
-                blocks, minQueued, maxQueued, target, underruns);
+        if (nextReport != 0 && !gAudioStatsReady) {
+            gAudioStats[0] = (int)blocks;
+            gAudioStats[1] = minQueued;
+            gAudioStats[2] = maxQueued;
+            gAudioStats[3] = target;
+            gAudioStats[4] = (int)underruns;
+            SDL_MemoryBarrierRelease();
+            gAudioStatsReady = 1;
         }
         nextReport = now + 30000;
         blocks = 0;
@@ -308,6 +322,18 @@ int __wrap_audsrv_wait_audio(int bytes)
 }
 
 namespace fallout {
+
+void audioEngineLogStats()
+{
+    if (!gAudioStatsReady) {
+        return;
+    }
+    SDL_MemoryBarrierAcquire();
+    debug_printf("audio: %d blocks, queue %d-%d bytes before each block (target %d), %d underruns\n",
+        gAudioStats[0], gAudioStats[1], gAudioStats[2], gAudioStats[3], gAudioStats[4]);
+    ps2_thread_stack_report("30 s");
+    gAudioStatsReady = 0;
+}
 
 // On a PS2 opening audio loads the sound driver (audsrv) on the I/O
 // processor and then waits for it to answer. If the driver can't start
@@ -337,7 +363,7 @@ static int audioEngineOpenThread(void*)
 bool audioEngineInit()
 {
     gAudioOpenDone = SDL_CreateSemaphore(0);
-    SDL_Thread* thread = gAudioOpenDone != NULL ? SDL_CreateThread(audioEngineOpenThread, "audio-open", NULL) : NULL;
+    SDL_Thread* thread = gAudioOpenDone != NULL ? ps2_thread_create(audioEngineOpenThread, "audio-open", 64 * 1024, NULL) : NULL;
     if (thread == NULL) {
         return audioEngineOpen();
     }

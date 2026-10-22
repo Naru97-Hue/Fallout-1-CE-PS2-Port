@@ -4,6 +4,8 @@
 
 #include "game/ps2autotest.h"
 
+#include "ps2_thread_stack.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -91,6 +93,7 @@ void ps2autotest_watchdog()
     if (SDL_GetTicks() - gStart >= (Uint32)(gSeconds + 60) * 1000) {
         debug_printf("autotest: stuck outside the map view (world map or a dialog?) - ending\n");
         ps2_log_memory("autotest end");
+        ps2_thread_stack_report("autotest end");
         exit(0);
     }
 }
@@ -165,6 +168,7 @@ void ps2autotest_tick()
             debug_printf("autotest: quick save to slot %d -> %d in %u ms\n", gSaveSlot, rc, SDL_GetTicks() - t0);
         }
         ps2_log_memory("autotest end");
+        ps2_thread_stack_report("autotest end");
         art_cache_log_stats("end");
         art_cache_map_changed("NOTBIG.MAP"); // as if the next map were a normal one
         art_cache_log_stats("after shrinking");

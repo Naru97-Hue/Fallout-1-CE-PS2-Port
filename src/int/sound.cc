@@ -1710,6 +1710,7 @@ void soundUpdate()
 {
 #ifdef __PS2__
     fadeSoundsPump();
+    audioEngineLogStats();
 #endif
     Sound* curr = soundMgrList;
     while (curr != NULL) {

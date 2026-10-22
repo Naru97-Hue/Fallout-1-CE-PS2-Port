@@ -19,6 +19,7 @@
 #include <kernel.h>
 
 #include "plib/gnw/debug.h"
+#include "ps2_thread_stack.h"
 
 namespace fallout {
 
@@ -198,7 +199,7 @@ void ps2crash_install()
         ee_dbg_set_level1_handler(kCauses[i], ps2crash_handler);
     }
 
-    SDL_Thread* thread = SDL_CreateThread(ps2crash_watchdog, "watchdog", NULL);
+    SDL_Thread* thread = ps2_thread_create(ps2crash_watchdog, "watchdog", 32 * 1024, NULL);
     if (thread != NULL) {
         SDL_DetachThread(thread);
     }
