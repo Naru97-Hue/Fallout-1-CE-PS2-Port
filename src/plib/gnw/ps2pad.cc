@@ -86,6 +86,13 @@ static int gScrollKeyX = 0;
 static int gScrollKeyY = 0;
 // D-pad presses that fell back to arrow keys (to release them on button up).
 static bool gDpadSentKey[PAD_BUTTON_COUNT];
+
+// Holding a D-pad direction keeps jumping to the next target: first repeat
+// after 300 ms, then every 130 ms (it used to need a new press each time).
+#define DPAD_REPEAT_DELAY 300
+#define DPAD_REPEAT_RATE 130
+static int gDpadHeldDir = -1;
+static Uint32 gDpadNextRepeat = 0;
 // The action each button started when pressed (released with the button,
 // even if the mapping changed in between). PS2_ACTION_NONE = nothing held.
 static int gPressedAction[PAD_BUTTON_COUNT] = { PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE, PS2_ACTION_NONE,
@@ -241,10 +248,19 @@ bool ps2pad_handle_event(SDL_Event* event, Ps2PadKeyCallback* emitKey)
                 if (!ps2nav_step(kDirX[dir], kDirY[dir])) {
                     emitKey(kButtonKeys[button], true);
                     gDpadSentKey[button] = true;
+                    gDpadHeldDir = -1;
+                } else {
+                    gDpadHeldDir = dir;
+                    gDpadNextRepeat = SDL_GetTicks() + DPAD_REPEAT_DELAY;
                 }
-            } else if (gDpadSentKey[button]) {
-                emitKey(kButtonKeys[button], false);
-                gDpadSentKey[button] = false;
+            } else {
+                if (gDpadHeldDir == button - PAD_UP) {
+                    gDpadHeldDir = -1;
+                }
+                if (gDpadSentKey[button]) {
+                    emitKey(kButtonKeys[button], false);
+                    gDpadSentKey[button] = false;
+                }
             }
         } else if (down) {
             ps2pad_release(button, emitKey);
@@ -318,6 +334,19 @@ void ps2pad_check_connection(Ps2PadKeyCallback* emitKey)
 {
     static bool wasConnected = true;
     bool connected = ps2pad_connected();
+
+    // D-pad held on a target: keep jumping (once per frame check).
+    if (gDpadHeldDir >= 0 && connected) {
+        Uint32 now = SDL_GetTicks();
+        if ((Sint32)(now - gDpadNextRepeat) >= 0) {
+            static const int kDirX[4] = { 0, 1, 0, -1 };
+            static const int kDirY[4] = { -1, 0, 1, 0 };
+            gDpadNextRepeat = now + DPAD_REPEAT_RATE;
+            ps2nav_step(kDirX[gDpadHeldDir], kDirY[gDpadHeldDir]);
+        }
+    } else if (!connected) {
+        gDpadHeldDir = -1;
+    }
     if (wasConnected && !connected) {
         // Unplugged mid-press: let go of everything so nothing sticks.
         for (int button = 0; button < PAD_BUTTON_COUNT; button++) {

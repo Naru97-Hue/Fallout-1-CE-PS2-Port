@@ -43,7 +43,14 @@ Release helpers in tools/:
 
 **Game audio** (music, sound effects, speech) works out of the box: the port
 plays the original files from `MASTER.DAT` / `DATA` through the PS2's sound
-processor. Nothing needs converting.
+processor. Nothing needs converting. The port keeps only about 45 ms of
+sound queued (instead of SDL's usual ~110 ms), so clicks and gunshots are
+heard sooner; `debug.log` reports the queue level and any underruns every
+30 seconds.
+
+**Input**: frames are paced to fixed deadlines, so the time between reading
+the pad and drawing the result stays even. Holding the D-pad in menus and
+lists repeats the move (after 0.3 s, then about 8 per second).
 
 **Cutscenes** need converting once, because the PS2 can't decode the PC's
 `.MVE` format. The port plays them with the PS2's video decoder (IPU) from a

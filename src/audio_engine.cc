@@ -251,6 +251,64 @@ static bool audioEngineOpen()
 }
 
 #ifdef __PS2__
+} // namespace fallout
+
+// Smaller sound queue. SDL's PS2 audio driver hands audsrv (the sound driver
+// on the I/O processor) a 512-sample block whenever there's room in its ring
+// buffer, which holds about 100 ms - so every sound reached the speakers
+// ~100-130 ms after the game started it. This waits until only two blocks
+// (about 46 ms at 22 kHz) are queued before SDL mixes the next one, cutting
+// that delay roughly in half while keeping enough queued to ride out a slow
+// frame. debug.log reports the queue level and any underruns every 30 s.
+extern "C" {
+#include <audsrv.h>
+
+int __real_audsrv_wait_audio(int bytes);
+
+int __wrap_audsrv_wait_audio(int bytes)
+{
+    static unsigned int blocks = 0;
+    static unsigned int underruns = 0;
+    static int minQueued = 1 << 30;
+    static int maxQueued = 0;
+    static Uint32 nextReport = 0;
+
+    int rc = __real_audsrv_wait_audio(bytes);
+    int target = bytes * 2;
+    int queued = audsrv_queued();
+    for (int i = 0; i < 50 && queued > target; i++) {
+        SDL_Delay(2);
+        queued = audsrv_queued();
+    }
+
+    blocks++;
+    if (queued <= 0) {
+        underruns++;
+    }
+    if (queued < minQueued) {
+        minQueued = queued;
+    }
+    if (queued > maxQueued) {
+        maxQueued = queued;
+    }
+    Uint32 now = SDL_GetTicks();
+    if ((Sint32)(now - nextReport) >= 0) {
+        if (nextReport != 0) {
+            fallout::debug_printf("audio: %u blocks, queue %d-%d bytes before each block (target %d), %u underruns\n",
+                blocks, minQueued, maxQueued, target, underruns);
+        }
+        nextReport = now + 30000;
+        blocks = 0;
+        underruns = 0;
+        minQueued = 1 << 30;
+        maxQueued = 0;
+    }
+    return rc;
+}
+}
+
+namespace fallout {
+
 // On a PS2 opening audio loads the sound driver (audsrv) on the I/O
 // processor and then waits for it to answer. If the driver can't start
 // (a broken or unusual setup) that wait never ends and the game froze at
