@@ -12,6 +12,7 @@
 
 #include "game/anim.h"
 #include "game/game.h"
+#include "game/gsound.h"
 #include "game/loadsave.h"
 #include "game/map.h"
 #include "game/object.h"
@@ -27,6 +28,7 @@ static int gSaveSlot = 0;
 static Uint32 gStart = 0;
 static Uint32 gNextWalk = 0;
 static int gWalks = 0;
+static int gFadeStep = 0;
 
 bool ps2autotest_active()
 {
@@ -81,6 +83,23 @@ void ps2autotest_tick()
         return;
     }
     Uint32 now = SDL_GetTicks();
+
+    // Sound fade test: background music "nar_1" (the test setup copies a
+    // long narrator sound into the music folder), started, faded out and
+    // freed - three times. Fades
+    // finish on the main thread (sound.cc).
+    Uint32 elapsed = now - gStart;
+    if (gFadeStep < 6 && elapsed >= 3000 + (Uint32)gFadeStep * 4000) {
+        if (gFadeStep % 2 == 0) {
+            int rc = gsound_background_play("nar_1", 12, 14, 16);
+            debug_printf("autotest: fade test %d - streaming sound started (%d)\n", gFadeStep / 2 + 1, rc);
+        } else {
+            gsound_background_fade_set(1);
+            gsound_background_stop();
+            debug_printf("autotest: fade test %d - fading out\n", gFadeStep / 2 + 1);
+        }
+        gFadeStep++;
+    }
 
     // Walk somewhere new every 3 seconds: scrolls the map and loads art.
     // Destinations near an exit grid are skipped (walking onto one leaves

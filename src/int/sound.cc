@@ -1391,10 +1391,39 @@ static Uint32 doTimerEvent(Uint32 interval, void* param)
 }
 
 // 0x49BB94
+#ifdef __PS2__
+// Fades run on the main thread (from soundUpdate, every frame) instead of an
+// SDL timer thread: a finished fade stops/deletes the sound and closes its
+// file, which could otherwise overlap the main thread refilling that same
+// streaming sound from the file.
+static Uint32 gFadeNextTick = 0;
+
+static void fadeSoundsPump()
+{
+    if (gFadeSoundsTimerId == 0) {
+        return;
+    }
+    Uint32 now = SDL_GetTicks();
+    // Catch up after a long frame, like the 40 ms timer would have.
+    for (int steps = 0; steps < 10 && gFadeSoundsTimerId != 0 && (Sint32)(now - gFadeNextTick) >= 0; steps++) {
+        gFadeNextTick += 40;
+        fadeSounds();
+    }
+    if ((Sint32)(now - gFadeNextTick) >= 0) {
+        gFadeNextTick = now + 40;
+    }
+    if (gFadeSoundsTimerId == 0) {
+        debug_printf("sound: fades finished (main thread)\n");
+    }
+}
+#endif
+
 static void removeTimedEvent(SDL_TimerID* timerId)
 {
     if (*timerId != 0) {
+#ifndef __PS2__
         SDL_RemoveTimer(*timerId);
+#endif
         *timerId = 0;
     }
 }
@@ -1525,6 +1554,11 @@ static void fadeSounds()
 
     ptr = fadeHead;
     while (ptr != NULL) {
+        // The loop never moved on to the next fade: a fade ran to the end in
+        // one go, and once removed, the same (now empty) entry was handled
+        // again - reading a NULL sound and looping forever. Remember the
+        // next entry before this one can be removed.
+        FadeSound* next = ptr->next;
         if ((ptr->currentVolume > ptr->targetVolume || ptr->currentVolume + ptr->deltaVolume < ptr->targetVolume) && (ptr->currentVolume < ptr->targetVolume || ptr->currentVolume + ptr->deltaVolume > ptr->targetVolume)) {
             ptr->currentVolume += ptr->deltaVolume;
             soundVolume(ptr->sound, ptr->currentVolume);
@@ -1550,6 +1584,7 @@ static void fadeSounds()
 
             removeFadeSound(ptr);
         }
+        ptr = next;
     }
 
     if (fadeHead == NULL) {
@@ -1641,7 +1676,12 @@ static int internalSoundFade(Sound* sound, int duration, int targetVolume, int a
         return soundErrorno;
     }
 
+#ifdef __PS2__
+    gFadeSoundsTimerId = 1; // pumped by soundUpdate
+    gFadeNextTick = SDL_GetTicks() + 40;
+#else
     gFadeSoundsTimerId = SDL_AddTimer(40, doTimerEvent, (void*)fadeSounds);
+#endif
     if (gFadeSoundsTimerId == 0) {
         soundErrorno = SOUND_UNKNOWN_ERROR;
         return soundErrorno;
@@ -1668,6 +1708,9 @@ void soundFlushAllSounds()
 // 0x49C15C
 void soundUpdate()
 {
+#ifdef __PS2__
+    fadeSoundsPump();
+#endif
     Sound* curr = soundMgrList;
     while (curr != NULL) {
         // Sound can be deallocated in `soundContinue`.

@@ -825,6 +825,10 @@ void gsound_background_stop()
 {
     if (gsound_initialized && gsound_background_enabled && gsound_background_tag) {
         if (gsound_background_fade) {
+            // Nothing keeps the music after this: let the fade free it when
+            // it reaches silence (it was only stopped, leaking the sound and
+            // its buffers on every faded-out track).
+            gsound_background_tag->type |= SOUND_TYPE_FIRE_AND_FORGET;
             if (soundFade(gsound_background_tag, 2000, 0) == 0) {
                 gsound_background_tag = NULL;
                 return;
