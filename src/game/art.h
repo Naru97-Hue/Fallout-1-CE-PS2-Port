@@ -149,6 +149,8 @@ int art_alias_fid(int fid);
 int art_data_size(int a1, int* out_size);
 #ifdef __PS2__
 void art_cache_log_stats(const char* tag);
+// Picks the art cache size for a map about to load.
+void art_cache_map_changed(const char* mapName);
 #endif
 int art_data_load(int a1, int* a2, unsigned char* data);
 void art_data_free(void* ptr);

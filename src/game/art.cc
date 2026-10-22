@@ -976,6 +976,51 @@ static void art_size_cache_put(int fid, int size)
 
 // 0x4191D8
 #ifdef __PS2__
+// Bigger art cache for the big, busy maps (+2 MB, from system memory), the
+// normal size everywhere else. Only when there is memory to spare.
+static int art_cache_base_mb = 0;
+
+static bool art_cache_is_big_map(const char* name)
+{
+    static const char* kBigMaps[] = {
+        "HUB", // the Hub (all its maps)
+        "LA", // the Boneyard (LAADYTUM, LAFOLLWR, LAGUNRUN, LABLADES, LARIPPER)
+        "HALLDED", "HOTEL", "WATRSHD", // Necropolis
+        "CHILDRN", // the Cathedral
+        "MBSTRG", "MBVATS", // Mariposa military base
+        "MSTRLR", // the Master's vault
+        "BROHD", // the Brotherhood of Steel
+        "SHADY", // Shady Sands
+    };
+    for (size_t i = 0; i < sizeof(kBigMaps) / sizeof(kBigMaps[0]); i++) {
+        if (compat_strnicmp(name, kBigMaps[i], strlen(kBigMaps[i])) == 0) {
+            return true;
+        }
+    }
+    const char* extra = ps2autotest_big_map(); // test runs can add one
+    return extra != NULL && compat_strnicmp(name, extra, strlen(extra)) == 0;
+}
+
+void art_cache_map_changed(const char* mapName)
+{
+    if (art_cache_base_mb == 0) {
+        art_cache_base_mb = art_cache.maxSize >> 20;
+    }
+    int mb = art_cache_base_mb;
+    if (art_cache_is_big_map(mapName)) {
+        // The extra 2 MB comes from free memory: keep at least 9 MB free.
+        if (ps2_free_memory() > 11L * 1024 * 1024) {
+            mb = art_cache_base_mb + 2;
+        } else {
+            debug_printf("art cache: %s is a big map, but memory is short - staying at %d MB\n", mapName, mb);
+        }
+    }
+    if ((art_cache.maxSize >> 20) != mb) {
+        cache_set_max_size(&art_cache, mb << 20);
+        debug_printf("art cache: %d MB for %s\n", mb, mapName);
+    }
+}
+
 void art_cache_log_stats(const char* tag)
 {
     unsigned int total = art_cache.statHits + art_cache.statMisses;

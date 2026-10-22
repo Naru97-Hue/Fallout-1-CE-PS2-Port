@@ -83,6 +83,9 @@ typedef struct Cache {
     Heap heap;
 } Cache;
 
+#ifdef __PS2__
+void cache_set_max_size(Cache* cache, int maxSize);
+#endif
 bool cache_init(Cache* cache, CacheSizeProc* sizeProc, CacheReadProc* readProc, CacheFreeProc* freeProc, int maxSize);
 bool cache_exit(Cache* cache);
 int cache_query(Cache* cache, int key);

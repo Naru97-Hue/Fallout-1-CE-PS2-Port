@@ -634,6 +634,23 @@ static bool cache_reset_counter(Cache* cache)
     return true;
 }
 
+#ifdef __PS2__
+// Changes how much the cache may hold. The heap block stays as it was:
+// anything beyond it goes to system memory (see cache_add). Shrinking evicts
+// unused entries until the cache fits (entries in use stay).
+void cache_set_max_size(Cache* cache, int maxSize)
+{
+    cache->maxSize = maxSize;
+    for (int pass = 0; pass < 16 && cache->size > cache->maxSize; pass++) {
+        int before = cache->size;
+        cache_make_room(cache, 0);
+        if (cache->size == before) {
+            break; // only entries in use left
+        }
+    }
+}
+#endif
+
 // Prepare cache for storing new entry with the specified size.
 //
 // 0x41F54C

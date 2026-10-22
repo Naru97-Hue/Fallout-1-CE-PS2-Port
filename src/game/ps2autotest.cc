@@ -27,6 +27,7 @@ static int gSlot = 1;
 static int gSeconds = 60;
 static int gSaveSlot = 0;
 static int gArtCacheMb = 0;
+static char gBigMap[16] = "";
 static int gFadeTest = 1;
 static Uint32 gStart = 0;
 static Uint32 gNextWalk = 0;
@@ -48,6 +49,7 @@ bool ps2autotest_active()
                 sscanf(line, "seconds=%d", &gSeconds);
                 sscanf(line, "save=%d", &gSaveSlot);
                 sscanf(line, "artcache=%d", &gArtCacheMb);
+                sscanf(line, "bigmap=%15s", gBigMap);
                 sscanf(line, "fadetest=%d", &gFadeTest);
             }
             fclose(stream);
@@ -61,6 +63,11 @@ bool ps2autotest_active()
 int ps2autotest_art_cache_mb()
 {
     return ps2autotest_active() ? gArtCacheMb : 0;
+}
+
+const char* ps2autotest_big_map()
+{
+    return ps2autotest_active() && gBigMap[0] != '\0' ? gBigMap : NULL;
 }
 
 void ps2autotest_run_from_main_menu()
@@ -159,6 +166,9 @@ void ps2autotest_tick()
         }
         ps2_log_memory("autotest end");
         art_cache_log_stats("end");
+        art_cache_map_changed("NOTBIG.MAP"); // as if the next map were a normal one
+        art_cache_log_stats("after shrinking");
+        ps2_log_memory("autotest after shrinking");
         debug_printf("autotest: done after %d walks\n", gWalks);
         gStart = 0;
         game_user_wants_to_quit = 2;

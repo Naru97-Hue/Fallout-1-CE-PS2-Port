@@ -857,6 +857,9 @@ void map_new_map()
 // 0x474614
 int map_load(char* file_name)
 {
+#ifdef __PS2__
+    art_cache_map_changed(file_name);
+#endif
     int rc;
     DB_FILE* stream;
     char* extension;
