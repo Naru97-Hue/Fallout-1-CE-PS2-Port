@@ -236,8 +236,24 @@ Memory: the ELF is built without unused code or unwind tables (about 1.5 MB
 less), and the SDL screen texture (about 1.2 MB) is only made if the GS path
 can't be used. debug.log shows free memory at startup, before the main menu
 and after each map loads ("mem[...]").
+Saving and loading map states no longer lock the file for every single
+byte (each lock was a call into the PS2 kernel): saves take about a second
+instead of several, and towns load faster. There's no .BAK backup of the
+slot any more (it cost time on USB / memory card); if a save fails halfway
+that slot is lost. A "SAVING..." box shows while a save is written.
+Art cache: 4 MB normally, 6 MB on the big maps (Hub, Boneyard, Necropolis,
+Cathedral, military base, Master's vault, Brotherhood, Shady Sands) when at
+least 9 MB stay free. debug.log shows its size and how much art came from
+memory vs disk ("art cache [...]").
 If the sound driver doesn't start within 5 seconds the game carries on
-without sound instead of freezing.
+without sound instead of freezing. Music/sound fades run on the main
+thread.
+
+TEST MODE (for developers)
+An AUTOTEST.TXT next to MASTER.DAT makes the game run unattended: load a
+save slot, walk around, optionally quick-save, then quit (keys: slot=,
+seconds=, save=, artcache=, bigmap=, fadetest=). Used with tools/emu.
+Players never need this file.
 
 
 GRAPHICS (GS renderer)

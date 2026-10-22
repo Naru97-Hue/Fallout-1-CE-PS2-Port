@@ -163,7 +163,7 @@ int main_menu_create()
     getverstr(version, sizeof(version));
 #ifdef __PS2__
     // Which PS2 build this is (handy when checking a copied ELF).
-    strncat(version, " - PS2 v0.7", sizeof(version) - strlen(version) - 1);
+    strncat(version, " - PS2 v0.8", sizeof(version) - strlen(version) - 1);
 #endif
     len = text_width(version);
     win_print(main_window, version, 0, 615 - len, 460, colorTable[21204] | 0x4000000 | 0x2000000);
